@@ -15,6 +15,7 @@ if __name__ == '__main__':
     #output_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/output'
     input_path = sys.argv[1]
     output_path = sys.argv[2]
+    num_cores = sys.argv[3]
     # Box radius is the size of sub images; 0 = height, 1 = width
     boxradius = (800, 500)
 
@@ -55,7 +56,7 @@ if __name__ == '__main__':
         # *-*-*-*-*-*-*-*-*-*-*-* Action Phase *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
         #Generate fine grid and process to create rawwavepad
         current_photo.build_scatter_path(boxradius, 0, expand_radi, disp = False)
-        current_photo.compute_phase2(FreqFilterWidth_FineGrid, wave_pixel_expand, ncore = 10)
+        current_photo.compute_phase2(FreqFilterWidth_FineGrid, wave_pixel_expand, ncore = num_cores)
         print("Finished processing fine grid generating wave pad")
 
         # --------------------------Processing Wave Pad ------------------------------------
