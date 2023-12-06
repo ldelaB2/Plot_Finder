@@ -16,7 +16,7 @@ if __name__ == '__main__':
     #num_cores = 10
     input_path = sys.argv[1]
     output_path = sys.argv[2]
-    num_cores = sys.argv[3]
+    num_cores = sys.argv[3].astype(int)
     # Box radius is the size of sub images; 0 = height, 1 = width
     boxradius = (800, 500)
 
