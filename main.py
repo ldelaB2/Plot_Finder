@@ -10,9 +10,10 @@ if __name__ == '__main__':
     start_time = time.time()
 
     # --------------------------Processing Ortho Photo ------------------------------------
-    # Input and output directories
+    # Input and output directories (local) \n (docker)
     #input_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/input'
     #output_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/output'
+    #num_cores = 10
     input_path = sys.argv[1]
     output_path = sys.argv[2]
     num_cores = sys.argv[3]
