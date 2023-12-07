@@ -10,13 +10,14 @@ if __name__ == '__main__':
     start_time = time.time()
 
     # --------------------------Processing Ortho Photo ------------------------------------
-    # Input and output directories (local) \n (docker)
-    #input_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/input'
-    #output_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/output'
-    #num_cores = 10
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
-    num_cores = int(sys.argv[3])
+    # Input and output directories (local)
+    input_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/input'
+    output_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/output'
+    num_cores = 10
+    # Docker
+    #input_path = sys.argv[1]
+    #output_path = sys.argv[2]
+    #num_cores = int(sys.argv[3])
 
     # Box radius is the size of sub images; 0 = height, 1 = width
     boxradius = (800, 500)
