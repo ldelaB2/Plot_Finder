@@ -14,7 +14,7 @@ if __name__ == '__main__':
     input_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/input'
     output_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/output'
     num_cores = 10
-    # Docker
+    # Docker t
     #input_path = sys.argv[1]
     #output_path = sys.argv[2]
     #num_cores = int(sys.argv[3])
