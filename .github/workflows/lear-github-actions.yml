@@ -7,15 +7,12 @@ env:
   IMAGE_NAME: plot_finder
   IMAGE_TAG: 1.0.${{github.run_number}}
 
-
 jobs:
   build-push-docker:
-
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-actions@v1
@@ -26,10 +23,26 @@ jobs:
           registry: ${{env.REGISTRY}}
           username: ${{secrets.DOCKERHUB_USERNAME}}
           password: ${{secrets.DOCKERHUB_PASSWORD}}
-          
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v1
+        with:
+          images: ldelab2/plot_finder
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v2
+        with:
+          context: .github/workflows
+          file: Dockerfile
+          push: true
+          tags: $${{steps.meta.outputs.tags}}
+          labels: ${{steps.meta.outputs.labels}}
 
 
 
-       - name: Build the Docker image
-        working-directory: .github/workflows
-        run: docker build . --file Dockerfile --tag plot_finder
+
+
+
+
+
