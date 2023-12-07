@@ -1,14 +1,13 @@
-name: learn-github-actions
-run-name: ${{ github.actor }} is learning GitHub Actions
+name: 'Build Docker Image'
+run-name: ${{ github.actor }} is building docker image
 on: [push]
 jobs:
-  check-bats-version:
+  build-container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '14'
-      - run: npm install -g bats
-      - run: bats -v
+      - uses: actions/checkout@v3
+
+      - name: Build the Docker image
+        working-directory: .github/workflows
+      - run: docker build . --file Dockerfile
 
