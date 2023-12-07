@@ -9,5 +9,5 @@ jobs:
 
       - name: Build the Docker image
         working-directory: .github/workflows
-      - run: docker build . --file Dockerfile --tag plot_finder
+        run: docker build . --file Dockerfile --tag plot_finder
 
