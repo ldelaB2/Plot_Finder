@@ -1,6 +1,32 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+import cv2 as cv
+
+def break_up_skel(args):
+    kernel, skel, shape = args
+    kernel = np.array(kernel).reshape(shape[0], shape[1]).astype(np.uint8)
+    tmp = np.argwhere(cv.erode(skel.astype(np.uint8), kernel, iterations=1).astype(bool))
+    if tmp.size > 0:
+        tmp = tmp.tolist()
+        return tmp
+    else:
+        return
+
+
+
+
+# Find the mode of a vector
+def find_mode(arr):
+    unique_elements, counts = np.unique(arr, return_counts = True)
+    max_count_index = np.argmax(counts)
+    modes = unique_elements[counts == counts[max_count_index]]
+
+    if len(modes) == 1:
+        return modes[0]
+    else:
+        print("Multiple Modes found returning first")
+        return modes[0]
 
 # Find max peak
 def findmaxpeak(signal, mask = None):
@@ -45,5 +71,6 @@ def flatten_mask_overlay(image, mask, alpha = 0.5):
     img_blue[bMask == 1] = bOut[bMask == 1]
 
     img_copy = np.stack([img_red,img_green,img_blue], axis = -1).astype(np.uint8)
+    img_copy = Image.fromarray(img_copy)
     return(img_copy)
 
