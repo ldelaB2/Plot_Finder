@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from functions import find_mode, break_up_skel
 from PIL import Image
 from skimage.morphology import skeletonize
-from plantcv import plantcv as pcv
+#from plantcv import plantcv as pcv
 import itertools
 import multiprocessing
 
