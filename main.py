@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     #for current_photo in ortho_photos:
     # Loop through all photos to process
-    current_photo = ortho_photos[6]
+    #current_photo = ortho_photos[6]
     print(f"Starting to process photo {current_photo.name}")
 
     # Read in the ortho photo and create gray scale photo (needs work)

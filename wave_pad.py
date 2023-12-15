@@ -1,4 +1,4 @@
-import os
+import os, itertools, multiprocessing
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
@@ -6,8 +6,6 @@ from functions import find_mode, break_up_skel
 from PIL import Image
 from skimage.morphology import skeletonize
 #from plantcv import plantcv as pcv
-import itertools
-import multiprocessing
 
 class wavepad:
     def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output):
