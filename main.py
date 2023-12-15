@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # Local
     #raw_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/test_imgs'
     #Docker
-    raw_path = sys.argv[0]
+    raw_path = sys.argv[1]
 
     input_path = os.path.join(raw_path, 'Images')
     output_path = os.path.join(raw_path, 'Output')
