@@ -17,19 +17,15 @@ ENV IRODS_PATH ""
 # Set the working directory
 WORKDIR /app
 
-# Clone GitHub repository
-RUN git clone https://github.com/ldelaB2/Plot_Finder.git .
+# Clone GitHub repository and download dependencies
+RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
+    pip install --no-cache-dir -r /app/requirements.txt
 
-# Install and authenticate IRODS
+# Install IRODS and make scripts executable
 RUN mkdir -p /root/.irods/ && \
     chmod +x /app/install_iRODS.sh && \
-    /app/install_iRODS.sh
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# Download Image set and run python script
-RUN chmod +x /app/download_and_run.sh
+    /app/install_iRODS.sh && \
+    chmod +x /app/download_and_run.sh
 
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/app/download_and_run.sh"]
