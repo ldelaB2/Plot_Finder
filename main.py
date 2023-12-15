@@ -33,45 +33,46 @@ if __name__ == '__main__':
 
     #for current_photo in ortho_photos:
     # Loop through all photos to process
-    #current_photo = ortho_photos[6]
-    print(f"Starting to process photo {current_photo.name}")
+    for current_photo in ortho_photos:
+        #current_photo = ortho_photos[6]
+        print(f"Starting to process photo {current_photo.name}")
 
-    # Read in the ortho photo and create gray scale photo (needs work)
-    current_photo.read_inphoto()
+        # Read in the ortho photo and create gray scale photo (needs work)
+        current_photo.read_inphoto()
 
-    # --------------------------Processing Spare Grid -----------------------------------
-    # @Param sparse_skip: Step size for sparse grid
-    sparse_skip = (100,100)
-    # @Param FreqFilterWidth: Controls how many frequencies we let in when searching sparse grid
-    FreqFilterWidth_SparseGrid = 1
-    # @Param vert_sig_remove: How many frequencies around the center to set to 0
-    vert_sig_remove = 5
-    # @Param num_sig_returned: How many frequencies to include in the mask
-    num_sig_returned = 2
+        # --------------------------Processing Spare Grid -----------------------------------
+        # @Param sparse_skip: Step size for sparse grid
+        sparse_skip = (100,100)
+        # @Param FreqFilterWidth: Controls how many frequencies we let in when searching sparse grid
+        FreqFilterWidth_SparseGrid = 1
+        # @Param vert_sig_remove: How many frequencies around the center to set to 0
+        vert_sig_remove = 5
+        # @Param num_sig_returned: How many frequencies to include in the mask
+        num_sig_returned = 2
 
-    # Building Sparse Path then Compute Phase 1 and build frequency mask
-    current_photo.build_scatter_path(boxradius, sparse_skip, disp = False)
-    current_photo.compute_phase1(FreqFilterWidth_SparseGrid, num_sig_returned, vert_sig_remove, disp = False)
-    print("Finished processing sparse grid generating fine grid")
+        # Building Sparse Path then Compute Phase 1 and build frequency mask
+        current_photo.build_scatter_path(boxradius, sparse_skip, disp = False)
+        current_photo.compute_phase1(FreqFilterWidth_SparseGrid, num_sig_returned, vert_sig_remove, disp = False)
+        print("Finished processing sparse grid generating fine grid")
 
-    # --------------------------Processing Fine Grid ------------------------------------
-    #@Param expand_radi: How many pixels to return for each subI 0 = row, 1 = column
-    expand_radi = [5,5]
-    #@Param FreqFilterWidth_FineGrid: Controls how many frequencies we let in when searching Fine grid
-    FreqFilterWidth_FineGrid = 1
-    #@Param wave_pixel_expand: Controls how many positions in the wave are measured to find pixel value
-    wave_pixel_expand = 0
+        # --------------------------Processing Fine Grid ------------------------------------
+        #@Param expand_radi: How many pixels to return for each subI 0 = row, 1 = column
+        expand_radi = [5,5]
+        #@Param FreqFilterWidth_FineGrid: Controls how many frequencies we let in when searching Fine grid
+        FreqFilterWidth_FineGrid = 1
+        #@Param wave_pixel_expand: Controls how many positions in the wave are measured to find pixel value
+        wave_pixel_expand = 0
 
-    #Generate fine grid and process to create rawwavepad
-    current_photo.build_scatter_path(boxradius, None, expand_radi, disp = False)
-    current_photo.compute_phase2(FreqFilterWidth_FineGrid, wave_pixel_expand, ncore = num_cores)
-    print("Finished processing fine grid generating wave pad")
+        #Generate fine grid and process to create rawwavepad
+        current_photo.build_scatter_path(boxradius, None, expand_radi, disp = False)
+        current_photo.compute_phase2(FreqFilterWidth_FineGrid, wave_pixel_expand, ncore = num_cores)
+        print("Finished processing fine grid generating wave pad")
 
-    # --------------------------Processing Wave Pad ------------------------------------
-    # Creating wavepad object
-    current_photo.build_wavepad(disp = False)
-    # Finding plots
-    #current_photo.find_plots(ncore = num_cores)
+        # --------------------------Processing Wave Pad ------------------------------------
+        # Creating wavepad object
+        current_photo.build_wavepad(disp = False)
+        # Finding plots
+        #current_photo.find_plots(ncore = num_cores)
 
 
 
