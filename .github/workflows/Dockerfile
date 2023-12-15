@@ -29,3 +29,5 @@ RUN mkdir -p /root/.irods/ && \
 
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/app/download_and_run.sh"]
+
+CMD tail -f /dev/null

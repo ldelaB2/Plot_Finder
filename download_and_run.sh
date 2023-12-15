@@ -28,7 +28,7 @@ SCRIPT_PATH="/app/working_directory/$LAST_FOLDER"
 python3 /app/main.py $SCRIPT_PATH
 
 # Pushing results to cyverse
-RESULTS_PATH="$SCRIPT_PATH/Output"
+#RESULTS_PATH="$SCRIPT_PATH/Output"
 
-iput -K -f -b -r -T --retries 5 -X output_checkpoint_file $RESULTS_PATH/* $IRODS_PATH
+#iput -K -f -b -r -T --retries 5 -X output_checkpoint_file $RESULTS_PATH/* "$IRODS_PATH/Output"
 
