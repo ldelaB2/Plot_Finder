@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Set up iRODS 
+echo '{
+  "irods_host": "'"$IRODS_HOST"'",
+  "irods_port": '$IRODS_PORT',
+  "irods_zone_name": "'"$IRODS_ZONE"'",
+  "irods_user_name": "'"$IRODS_USER_NAME"'",
+  "irods_authentication_scheme": "native",
+  "irods_password": "'"$IRODS_PASSWORD"'"
+}' > /root/.irods/irods_environment.json
+
+# Finalize iRODS connection
+echo -e "$IRODS_PASSWORD\n" | iinit
+
 # Making working directory
 mkdir -p /app/working_directory
 cd /app/working_directory
