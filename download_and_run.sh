@@ -32,3 +32,5 @@ python3 /app/main.py $SCRIPT_PATH
 
 #iput -K -f -b -r -T --retries 5 -X output_checkpoint_file $RESULTS_PATH/* "$IRODS_PATH/Output"
 
+tail -f /dev/null
+
