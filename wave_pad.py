@@ -2,34 +2,69 @@ import os, itertools, multiprocessing
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
-from functions import find_mode, break_up_skel
+from rectangles import rectangle
+from functions import find_mode, find_points, eludian_distance, find_center_line
 from PIL import Image
-from skimage.morphology import skeletonize
-#from plantcv import plantcv as pcv
 
 class wavepad:
-    def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output):
+    def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output, ncore):
         self.row_wavepad_binary = row_wavepad_binary
         self.range_wavepad_binary = range_wavepad_binary
         self.output_path = QC_output
-
+        self.ncore = ncore
 
     def compute_rectangles(self):
-        print("T")
-        num_ranges, range_labled, img_stats, _ = cv.connectedComponentsWithStats(self.real_range_skel)
-
-
         range_bool = self.real_range_skel.astype(bool)
         row_bool = self.col_skel.astype(bool)
         cp = np.argwhere(range_bool & row_bool)
-        cp_y_sorted = cp[np.argsort(cp[:,0])]
-        cp_x_sorted = cp[np.argsort(cp[:, 1])]
+        cp = eludian_distance((0,0),cp, return_points = True)
 
-    def find_ranges(self, ncore):
-        # This totally is not going to work
+        # Sorting the points into ranges
+        sorted_points = []
+
+        while True:
+            start_point = cp[0,:]
+            cp = cp[1:, :]
+
+            temp_range_points = []
+            temp_range_points.append(start_point)
+            flag = [False]
+            find_points(start_point, cp, temp_range_points, flag)
+            temp_range_points = np.array(temp_range_points)
+            sorted_points.append(temp_range_points)
+            if flag[0]:
+                break
+            else:
+                set1 = set(map(tuple, temp_range_points))
+                set2 = set(map(tuple, cp))
+                new_cp = set2.difference(set1)
+                new_cp = np.array(list(new_cp))
+                cp = eludian_distance((0, 0), new_cp, return_points=True)
+
+        # Finding the rectangles
+        real_rect = rectangle()
+        for e in range(len(sorted_points) - 1):
+            top_points = sorted_points[e]
+            bottom_points = sorted_points[e + 1]
+
+            if top_points.shape[0] != bottom_points.shape[0]:
+                print("Warning Num points in top and bottom not equal")
+            else:
+                for k in range(top_points.shape[0] - 1):
+                    top_left = top_points[k,:]
+                    top_right = top_points[k + 1,:]
+                    bottom_left = bottom_points[k,:]
+                    bottom_right = bottom_points[k + 1,:]
+                    points = [top_left, top_right, bottom_left, bottom_right]
+                    real_rect.four_2_five_rect(points)
+
+        return real_rect
+
+    def find_ranges(self):
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
         tmp = cv.morphologyEx(self.range_wavepad_binary, cv.MORPH_CLOSE, kernel)
+        tmp = cv.GaussianBlur(tmp, (5, 5), 2)
 
         # Finding Image object stats
         _, obj_filtered_wavepad, img_stats, _ = cv.connectedComponentsWithStats(tmp)
@@ -58,62 +93,53 @@ class wavepad:
         mask = np.isin(obj_filtered_wavepad, np.where(correct_indx == 1))
         obj_filtered_wavepad = np.where(mask, 1, 0).astype(np.uint8)
 
-        # Skeletonizing
-        skel = skeletonize(obj_filtered_wavepad.astype(bool))
+        # Saving the output
+        name = 'Range_Object_Filtered_Wavepad.jpg'
+        Image.fromarray(obj_filtered_wavepad * 255).save(os.path.join(self.output_path, name))
 
-        # Breaking up the skeleton
-        binary_matrices = list(itertools.product([0,1],repeat = 9))
-        kernels = [truple for truple in binary_matrices if truple.count(1) > 3]
+        # Finding the objects
+        num_obj, obj_labeled_img, img_stats, _ = cv.connectedComponentsWithStats(obj_filtered_wavepad)
 
-        print(f"Using {ncore} cores to prune range wavepad")
-        with multiprocessing.Pool(processes = ncore) as pool:
-            results = pool.map(
-                break_up_skel, [(kernel, skel, [3,3]) for kernel in kernels]
-            )
+        # Looping through all objects to draw center line
+        centerlines = []
+        for e in range(1, num_obj):
+            subset_x = np.column_stack(np.where(obj_labeled_img == e))
+            # Calculate mean 'y' for each 'x'
+            unique_vales, counts = np.unique(subset_x[:, 1], return_counts=True)
+            y_position = np.bincount(subset_x[:, 1], weights=subset_x[:, 0])
+            mean_y_values = (y_position[unique_vales] / counts).astype(int)
+            # Create a list of tuples for the centerline
+            centerline = list(zip(mean_y_values, unique_vales))
+            # Append the centerline to the list
+            centerlines.append(centerline)
 
-        unique_points = [tuple(point) for sublist in results if sublist is not None for point in sublist]
-        unique_points = np.array(list(set(unique_points)))
-        broken_skel = skel.astype(np.uint8)
-        broken_skel[unique_points[:,0],unique_points[:,1]] = 0
-
-        # Filtering out objects under 300 pixels
-        num_objects, broken_skel_labeled, img_stats, _ = cv.connectedComponentsWithStats(broken_skel)
-        object_areas = img_stats[:, 4]
-        area_thresh = 300
-        obj_to_remove = np.where(object_areas < area_thresh)
-        broken_skel_labeled[np.isin(broken_skel_labeled,obj_to_remove)] = 0
-        broken_skel_labeled[broken_skel_labeled > 0] = 1
+        # Create Skeleton
+        skel = np.zeros_like(obj_filtered_wavepad)
+        center_points = np.array(centerlines)
+        center_x = center_points[:, :, 1].flatten()
+        center_y = center_points[:, :, 0].flatten()
+        skel[center_y, center_x] = 1
 
         # Triming broaders
-        temp = np.sum(broken_skel_labeled, 0)
+        temp = np.sum(skel, 0)
         temp_mode = find_mode(temp[temp != 0])
         temp_index = np.where(temp == temp_mode)
         min_index = np.min(temp_index)
         max_index = np.max(temp_index)
-        broken_skel_labeled[:, :(min_index + 1)] = 0
-        broken_skel_labeled[:, max_index:] = 0
+        skel[:, :(min_index + 1)] = 0
+        skel[:, max_index:] = 0
 
-        #Dialating to fill holes
-        num_iterations = 20
-        tmp = broken_skel_labeled.astype(np.uint8)
-        kernel1 = np.ones((10,50))
-        for e in range(num_iterations):
-            tmp = cv.dilate(tmp, kernel1)
-
-        tmp[:,:(min_index + 1)] = 0
-        tmp[:, max_index:] = 0
-        skel = skeletonize(tmp.astype(bool))
+        # Returning output
         self.real_range_skel = skel
-
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 50))
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20,20))
         dialated_skel = cv.dilate(skel.astype(np.uint8), kernel)
         return dialated_skel
-
 
     def find_columns(self):
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20,20))
         tmp = cv.morphologyEx(self.row_wavepad_binary, cv.MORPH_CLOSE, kernel)
+        tmp = cv.GaussianBlur(tmp, (5,5),2)
 
         # Finding Image object stats
         _, obj_filtered_wavepad, img_stats, _ = cv.connectedComponentsWithStats(tmp)
@@ -133,7 +159,7 @@ class wavepad:
         correct_indx = np.zeros_like(object_areas)
         for k in range(object_areas.size):
             rel_object_size = round(object_areas[k] / mu)
-            if rel_object_size > .9 and rel_object_size < 2:
+            if rel_object_size > .9 and rel_object_size < 1.25:
                 correct_indx[k] = 1
             else:
                 correct_indx[k] = 0
@@ -146,9 +172,22 @@ class wavepad:
         name = 'Row_Object_Filtered_Wavepad.jpg'
         Image.fromarray(obj_filtered_wavepad * 255).save(os.path.join(self.output_path,name))
 
-        # Skeletonize and prune
-        skel = skeletonize(obj_filtered_wavepad.astype(bool))
-        skel = pcv.morphology.prune(skel.astype(np.uint8), size = 200)[0]
+        # Finding the objects
+        num_obj, obj_labeled_img, img_stats, _ = cv.connectedComponentsWithStats(obj_filtered_wavepad)
+
+        # Looping through all objects to draw center line
+        print(f"Using {self.ncore} cores to find center lines")
+        with multiprocessing.Pool(processes=self.ncore) as pool:
+            centerlines = pool.map(
+                find_center_line, [(obj_labeled_img, indx) for indx in range(1,num_obj)]
+            )
+      
+        # Create Skeleton
+        skel = np.zeros_like(obj_filtered_wavepad)
+        center_points = np.array(centerlines)
+        center_x = center_points[:,:,1].flatten()
+        center_y = center_points[:,:,0].flatten()
+        skel[center_y, center_x] = 1
 
         # Trimming boarder off
         temp = np.sum(skel, 1)
@@ -166,7 +205,9 @@ class wavepad:
         return dialated_skel
 
     def imput_col_skel(self):
-        num_col, labeled_skel, stats, centroids = cv.connectedComponentsWithStats(np.transpose(self.real_col_skel))
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10))
+        tmp = cv.dilate(self.real_col_skel, kernel)
+        num_col, labeled_skel, stats, centroids = cv.connectedComponentsWithStats(np.transpose(tmp))
         center_distance = np.array([])
         for e in range(1, centroids.shape[0] - 1):
             distance = abs(centroids[e,1] - centroids[e + 1,1])
@@ -174,6 +215,7 @@ class wavepad:
 
         center_distance = np.round(center_distance).astype(int)
         avg_distance = find_mode(center_distance)
+        self.avg_col_spacing = avg_distance * 1.25
         #plt.scatter(np.arange(center_distance.size), center_distance)
 
         col_to_imput = np.where(center_distance > avg_distance * 1.25)[0]
@@ -181,8 +223,15 @@ class wavepad:
 
         #Return if no columns to impute
         if col_to_imput.size == 0:
-            return
+            self.col_skel = self.real_col_skel
+            kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
+            dialated_skel = cv.dilate(self.real_col_skel.astype(np.uint8), kernel)
+            return dialated_skel
         else:
+            test = np.copy(self.real_col_skel.T)
+            indx = np.argwhere(self.real_col_skel.T != 0)
+            test[indx[:,0],indx[:,1]] = labeled_skel[indx[:,0],indx[:,1]]
+            labeled_skel = test
             fake_col_skel = []
             for e in range(col_to_imput.size):
                 top_side = np.column_stack(np.where(labeled_skel == (col_to_imput[e] + 1)))

@@ -98,5 +98,143 @@ def process_phase2_1core(self, FreqFilterWidth, row_mask, range_mask, num_pixles
             plt.show()
 
 
+# Find Contors
+        contours, _ = cv.findContours(obj_filtered_wavepad, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        tmp = np.zeros_like(obj_filtered_wavepad)
+        tmp = cv.drawContours(tmp, contours, -1, 1,10)
 
 
+        # Breaking up the skeleton
+        binary_matrices = list(itertools.product([0, 1], repeat=9))
+        kernels = [truple for truple in binary_matrices if truple.count(1) > 3]
+
+        print(f"Using {ncore} cores to prune range wavepad")
+        with multiprocessing.Pool(processes=ncore) as pool:
+            results = pool.map(
+                break_up_skel, [(kernel, skel, [3, 3]) for kernel in kernels]
+            )
+
+        unique_points = [tuple(point) for sublist in results if sublist is not None for point in sublist]
+        unique_points = np.array(list(set(unique_points)))
+        broken_skel = skel.astype(np.uint8)
+        broken_skel[unique_points[:, 0], unique_points[:, 1]] = 0
+
+        # Filtering out objects under 300 pixels
+        num_objects, broken_skel_labeled, img_stats, _ = cv.connectedComponentsWithStats(broken_skel)
+        object_areas = img_stats[:, 4]
+        area_thresh = 300
+        obj_to_remove = np.where(object_areas < area_thresh)
+        broken_skel_labeled[np.isin(broken_skel_labeled, obj_to_remove)] = 0
+        broken_skel_labeled[broken_skel_labeled > 0] = 1
+
+
+#Dialating to fill holes
+        num_iterations = 20
+        tmp = broken_skel_labeled.astype(np.uint8)
+        kernel1 = np.ones((10,50))
+        for e in range(num_iterations):
+            tmp = cv.dilate(tmp, kernel1)
+
+        tmp[:,:(min_index + 1)] = 0
+        tmp[:, max_index:] = 0
+        skel = skeletonize(tmp.astype(bool))
+
+
+
+
+
+
+
+
+        search_area = (145, 600)
+        rectangles = []
+        flag1 = True
+        flag2 = True
+        cnt = -1
+        while flag1:
+            if flag2:
+                top_left = cp[0,0:2]
+                cp = cp[1:, :]
+
+                points = cp[:,0:2]
+
+                test, _ = eludian_distance(top_left, points, return_points=True)
+
+
+                xmin, xmax = top_left[1] * .75, top_left[1] + search_area[0]
+                ymin, ymax = top_left[0] * .75, top_left[0] + search_area[1]
+
+                valid_points = cp[(cp[:,1] >= xmin) & (cp[:,1] <= xmax) & (cp[:,0] >= ymin) & (cp[:,0] <= ymax), 0:2]
+                valid_points = np.vstack((valid_points, top_left))
+                rectangles.append(valid_points)
+
+                flag2 = False
+                cnt += 1
+
+                if valid_points.shape[0] < 4:
+                    flag1 = False
+            else:
+                top_left = rectangles[cnt][0]
+                indx = np.where((cp[:,0] == top_left[0]) & (cp[:,1] == top_left[1]))
+
+                cp = np.delete(cp, indx, axis = 0)
+
+                xmin, xmax = top_left[1] * .75, top_left[1] + search_area[0]
+                ymin, ymax = top_left[0] * .75, top_left[0] + search_area[1]
+
+                valid_points = cp[(cp[:, 1] >= xmin) & (cp[:, 1] <= xmax) & (cp[:, 0] >= ymin) & (cp[:, 0] <= ymax),
+                               0:2]
+                valid_points = np.vstack((valid_points, top_left))
+                rectangles.append(valid_points)
+
+                cnt += 1
+                if valid_points.shape[0] < 4:
+                    flag2 = True
+
+        plt.scatter(cp[:,1],cp[:,0], color = 'red', marker='o')
+
+        cp_y_sorted = cp[np.argsort(cp[:,0])]
+        cp_x_sorted = cp[np.argsort(cp[:, 1])]
+
+        def break_up_skel(args):
+            kernel, skel, shape = args
+            kernel = np.array(kernel).reshape(shape[0], shape[1]).astype(np.uint8)
+            tmp = np.argwhere(cv.erode(skel.astype(np.uint8), kernel, iterations=1).astype(bool))
+            if tmp.size > 0:
+                tmp = tmp.tolist()
+                return tmp
+            else:
+                return
+
+    def centerline_from_contour(contours, poly_degree):
+        centerlines = []
+        for contour in contours:
+            # Rescaling data
+            x_mean = np.mean(contour[:, 0, 0])
+            y_mean = np.mean(contour[:, 0, 1])
+            x_std = np.std(contour[:, 0, 0])
+            y_std = np.std(contour[:, 0, 1])
+            x_scaled = (contour[:, 0, 0] - x_mean) / x_std
+            y_scaled = (contour[:, 0, 1] - y_mean) / y_std
+
+            # Fitting polynomial
+            polyfit_coefficients = np.polyfit(x_scaled, y_scaled, poly_degree)
+
+            # Find min and max Y values of the contour
+            min_y = np.min(contour[:, 0, 1])
+            max_y = np.max(contour[:, 0, 1])
+
+            # Rescale and find X values the return to original scale
+            y_vals = np.arange(min_y, max_y, 1)
+            y_vals_scaled = (y_vals - y_mean) / y_std
+            x_vals_scaled = np.polyval(polyfit_coefficients, y_vals_scaled)
+            x_vals = (x_vals_scaled * x_std + x_mean).astype(int)
+
+            # Generating the output
+            center_line = list(zip(y_vals, x_vals))
+            centerlines.append(center_line)
+
+        return centerlines
+    
+    
+        
