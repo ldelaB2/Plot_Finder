@@ -1,0 +1,17 @@
+---
+title: "Plot Finder QGIS Installation"
+author: "Will delaBretonne"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+```{r, echo=FALSE}
+library(reticulate)
+venv_path = "/Users/willdelabretonne/PycharmProjects/explainingFFT/venv"
+use_virtualenv(venv_path, required = TRUE)
+```
+
+This is the QGIS Markdown
