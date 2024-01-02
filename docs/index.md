@@ -15,6 +15,7 @@
         <li><a href="Plot_Finder_Local_Install.html">Local_Install</a></li>
         <li><a href="Plot_Finder_Docker_Install.html">Docker_Install</a></li>
         <li><a href="Plot_Finder_QGIS_Install.html">QGIS_Install</a></li>
+        <li><a href="Plot_Finder_Documentation.pdf">Reference_Manual</a></li>
     </ul>
 </nav>
 
