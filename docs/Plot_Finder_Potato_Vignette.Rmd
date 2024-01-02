@@ -1,7 +1,6 @@
 ---
 title: "Plot Finder Potato Vignette"
 author: "Will delaBretonne"
-date: "2024-01-02"
 output:
   html_document:
     toc: true
