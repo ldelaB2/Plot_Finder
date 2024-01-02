@@ -1,0 +1,389 @@
+---
+title: "Plot_Finder_Description"
+author: "Will delaBretonne"
+date: "2023-12-18"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r, echo=FALSE}
+library(reticulate)
+venv_path = "/Users/willdelabretonne/PycharmProjects/explainingFFT/venv"
+use_virtualenv(venv_path, required = TRUE)
+```
+
+The basic principle underlying this algorithm is a sliding window Fast Fourier Transform (FFT) approach. Part 1 is a description of the FFT method and how it is used to find rows and ranges in the image. The solution uses this method in two phases, Phase I is used to generate a rough idea of the correct frequency in the image. This information is used to create a filter used in Phase II to generate the Raw wave pad. Part 2 is a description of these two phases. Next, the algorithm uses the raw wave pad to find the center point of rows and ranges in the image. (work in progress to be continued). 
+
+## Part 1
+
+### Basics of Wave Mechanics
+
+We will start by examining the properties of a simple sin wave. First we will plot the wave as a function of theta from 0 to 2π
+
+```{python, echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MultipleLocator
+
+num_samples = 1000
+x = np.linspace(0, 2*np.pi, num_samples)
+y = np.sin(x)
+
+plt.close('all')
+plt.plot(x,y)
+plt.title('Sin Wave from 0 to 2π')
+
+def format_radians(val, pos):
+    pi_value = np.pi
+    frac, whole = np.modf(val / pi_value)
+    if frac == 0:
+        return f"{int(whole)}π"
+    elif frac == 0.5:
+        return f"{int(whole*2 + 1)}/4 π"
+    return f"{int(whole)}π + {frac:.2g}π"
+
+radian_formatter = FuncFormatter(format_radians)
+plt.gca().xaxis.set_major_formatter(radian_formatter)
+plt.gca().xaxis.set_major_locator(MultipleLocator(base=np.pi/2))  # Set major ticks at multiples of pi/2
+
+plt.xlabel('Theta (Rad)')
+plt.ylabel('Sin(Theta)')
+plt.grid(True)
+plt.show()
+
+```
+
+We can think of this wave as a function y = sin(k * theta) where in this case we have set k = 1. Now lets observe what happens when we modify the value of k. 
+
+```{python, echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MultipleLocator
+
+def format_radians(val, pos):
+    pi_value = np.pi
+    frac, whole = np.modf(val / pi_value)
+    if frac == 0:
+        return f"{int(whole)}π"
+    elif frac == 0.5:
+        return f"{int(whole*2 + 1)}/4 π"
+    return f"{int(whole)}π + {frac:.2g}π"
+
+num_samples = 1000
+x = np.linspace(0, 2*np.pi, num_samples)
+k1 = 2
+k2 = 1/2
+y1 = np.sin(x * k1)
+y2 = np.sin(x * k2)
+
+plt.close('all')
+fig,axs = plt.subplots(1,2)
+
+axs[0].plot(x, y1)
+axs[0].set_title('Sin Wave with K = 2')
+axs[0].set_xlabel('Theta (Rad)')
+axs[0].xaxis.set_major_formatter(FuncFormatter(lambda val, pos: format_radians(val, pos)))
+axs[0].xaxis.set_major_locator(MultipleLocator(base=np.pi/2))
+axs[0].set_ylabel('Sin(Theta)')
+axs[0].grid(True)
+
+axs[1].plot(x, y2)
+axs[1].set_title('Sin Wave with K = 1/2')
+axs[1].set_xlabel('Theta (Rad)')
+axs[1].xaxis.set_major_formatter(FuncFormatter(lambda val, pos: format_radians(val, pos)))
+axs[1].xaxis.set_major_locator(MultipleLocator(base=np.pi/2))
+axs[1].set_ylabel('Sin(Theta)')
+axs[1].grid(True)
+
+# Adjust layout to prevent clipping of titles
+plt.tight_layout()
+plt.show()
+
+```
+
+Notice that by setting k = 2 we have halved the period of the wave (now it completes a full period in π radians). Conversely we can think in terms of frequency which we know is related to period by the simple equation f = 1/T. Thus by halving the period we double the frequency. Additionally we can observe this result with K = 1/2 which doubles our period and halves the frequency. Thus we can think of K as controlling the frequency of our wave. If instead we wanted K to control the period we could re-write our equation as:
+\(y = \sin\left(\frac{2\pi}{k} \theta\right)\)
+
+we can visually inspect the results to make sure.
+
+```{python, echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MultipleLocator
+
+num_samples = 1000
+x = np.linspace(0, 2*np.pi, num_samples)
+k = np.pi
+y = np.sin(x * ((2 * np.pi) / k))
+
+plt.close('all')
+plt.plot(x,y)
+plt.title('Sin Wave, y = sin(2pi/k * theta) k = pi')
+
+def format_radians(val, pos):
+    pi_value = np.pi
+    frac, whole = np.modf(val / pi_value)
+    if frac == 0:
+        return f"{int(whole)}π"
+    elif frac == 0.5:
+        return f"{int(whole*2 + 1)}/4 π"
+    return f"{int(whole)}π + {frac:.2g}π"
+
+radian_formatter = FuncFormatter(format_radians)
+plt.gca().xaxis.set_major_formatter(radian_formatter)
+plt.gca().xaxis.set_major_locator(MultipleLocator(base=np.pi/2))  # Set major ticks at multiples of pi/2
+
+plt.xlabel('Theta (Rad)')
+plt.ylabel('Sin(Theta)')
+plt.grid(True)
+plt.show()
+```
+
+With this in our back pocket lets move on to the Fast Fourier Transform (FFT)
+
+#### FFT Background
+
+The FFT is a divide and conquer algorithm that recursively breaks down the Discrete Fourier Transform of any vector. The Discrete Fourier Transform converts a finite sequence of equally spaced samples of a function into a same-length sequence of equally spaced samples of the discrete-time Fourier Transform which is a complex-valued function of frequency. In simple terms this allows one to move from the time/special domain to frequency domain of a vector and the Fast in FFT is a more computationally efficient way to compute this frequency domain vector as it required only N * log(N) operations opposed to the N2 operations of the classical Discrete Fourier Transform. Now we will focus on computation of the classical DFT with the knowledge that in practice we will use the FFT for implementation but the mathematical principles underlying the algorithms are the same. 
+
+### DFT
+The Discrete Fourier Transform (DFT) for a singluar frequency is defined as:
+
+\[
+X(k) = \sum_{n=0}^{N-1} x(n) \cdot e^{-j \frac{2\pi}{N} kn}
+\]
+
+where:
+
+- \(X(k)\) is the DFT of the sequence at frequency K,
+
+- \(x(n)\) is the input sequence,
+
+- \(N\) is the number of samples in the sequence,
+
+- \(k\) is the frequency index.
+
+Lets break down this formula using our knowledge of waves from above. We will start by focusing on the term to the right
+
+\(e^{-j\frac{2\pi}{N} kn}\)
+
+first lets package \(\frac{2\pi}{N} kn\) as \(\theta\) 
+
+this gives us the equation \(e^{-j\theta}\)
+
+Using Euler's formula we can express this as  \[e^{-j\theta} = \cos(\theta) - j\sin(\theta)\]
+
+Now we can substitute our value for theta back in giving us the following equation
+
+\[e^{-j\left(\frac{2\pi}{N}kn\right)} = \cos\left(\frac{2\pi}{N}kn\right) - j\sin\left(\frac{2\pi}{N}kn\right)\]
+
+Now we will re-express theta in a way that is easier to interpreter. 
+
+we can write \(\theta = -j * 2\pi * k * \frac{n}{N}\) 
+
+from this we can see that n/N controls the period of our wave and K controls the frequency. Lets plot an example to visually verify this intuition. Here we are plotting the real part of Euler's formula (cos) as we sweeping through values of n (with N = 1000) for a given value of K. Notice how the wave with K = 1 has a period of 1000 (N) and how increasing K increases the frequency of this wave in integer multiples. We will call this these waves L(k) where k refers to the frequency
+
+```{python, echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MultipleLocator
+
+#Generate a signal
+fs = 1000
+x = np.arange(0,fs, 1)
+frequency = 1/50 # Freqency of the sine wave in HZ
+signal = np.sin(2 * np.pi * frequency * x)
+
+def dft_k(signal, k):
+  N = len(signal)
+  output = np.zeros(N, dtype = np.complex128)
+  
+  for n in range(N):
+    temp_wave = np.exp(-2j * np.pi * k * n / N)
+    output[n] = temp_wave
+  return output
+
+
+test = dft_k(signal, 1)
+
+plt.close('all')
+plt.plot(x,np.real(test))
+plt.title('Plot of Eulers formula sweeping through n with K = 1')
+
+plt.xlabel('n')
+plt.ylabel('e^-j * 2pi * k * n/N')
+plt.grid(True)
+plt.show()
+
+test = dft_k(signal, 2)
+
+plt.close('all')
+plt.plot(x,np.real(test))
+plt.title('Plot of Eulers formula sweeping through n with K = 2')
+
+plt.xlabel('n')
+plt.ylabel('e^-j * 2pi * k * n/N')
+plt.grid(True)
+plt.show()
+```
+
+Now to make this the DFT (of frequency k) of a signal the only thing left to do is multiply L(K) by our signal. In a way this measures the concordance between our signal and the "test" signal L(K). In places where the waves are similar we will get a positive number and in places where they are different we will get a negative number. When we sum over all points of our sample (N) we get the total contribution of L(K) to our signal. Surprisingly, we are able to do this without adjusting the phase of our test wave at all, rather the phase will naturally fall out of the end of this summation.
+
+Let’s walk through an example of how this works. First we will create a signal. This signal has a frequency of 20 HZ and we will display over 1000 samples
+
+```{python, echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+
+#Generate a signal
+fs = 1000 # Sampling frequency
+t = np.arange(0,fs, 1) # Time vector from 0 to 1 second
+frequency = 1/50 # Freqency of the sine wave in HZ
+signal = np.sin(2 * np.pi * frequency * t)
+
+plt.close('all')
+plt.plot(t,signal)
+plt.title('Original Signal')
+plt.xlabel('Time (ms)')
+plt.ylabel('Amplitude')
+plt.show()
+
+```
+
+
+Now we will introduce a function to compute the DFT and break it down line by line
+
+```{python,echo=FALSE}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# computing the Kth element of the DFT 
+def dft_k(signal, k):
+  N = len(signal) # Length of the input signal
+  output = np.zeros(N, dtype = np.complex128) # Creating output vector of same length
+  
+  for n in range(N): # looping through time/space index
+    temp_wave = signal[n] * np.exp(-2j * np.pi * k * n / N)
+    output[n] = temp_wave
+  return output
+
+second_frequency = dft_k(signal, 2)
+fifth_frequency = dft_k(signal, 5)
+
+plt.close('all')
+fig, (ax1, ax2) = plt.subplots(1,2)
+
+ax1.plot(t, np.real(second_frequency))
+ax1.set_title('K = 2')
+ax1.set_xlabel('Time (ms)')
+ax1.set_ylabel('Amplitude')
+
+ax2.plot(t, np.real(fifth_frequency))
+ax2.set_title('K = 5')
+ax2.set_xlabel('Time (ms)')
+
+fig.suptitle('Real Part of the K-th Frequency Component', fontsize = 15)
+plt.show()
+
+print(f"Sum of second frequency component = {abs(np.sum(second_frequency))}")
+print(f"Sum of fifth frequency component = {abs(np.sum(fifth_frequency))}")
+
+```
+
+We can see that the real part of these sums in almost 0 indicating that they make very little contribution to our signal (in theory this should be 0 but this is because we are estimating the sequence over a finite sample and thus would need infinitely many samples to obtain a value of 0). However look what happens when we search at the frequency of our signal.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# computing the Kth element of the DFT 
+def dft_k(signal, k):
+  N = len(signal) # Length of the input signal
+  output = np.zeros(N, dtype = np.complex128) # Creating output vector of same length
+  
+  for n in range(N): # looping through time/space index
+    temp_wave = signal[n] * np.exp(-2j * np.pi * k * n / N)
+    output[n] = temp_wave
+  return output
+
+kth_frequency = dft_k(signal, 20)
+
+plt.close('all')
+plt.plot(t, np.real(kth_frequency))
+plt.title('K = 20')
+plt.xlabel('Time (ms)')
+plt.ylabel('Amplitude')
+
+plt.show()
+
+print(f"Sum of 20th frequency component = {abs(np.sum(kth_frequency))}")
+
+```
+
+We get a massive spike in the contribution of this frequency to our signal!
+Now the final step we have to take to get the full DFT of our signal is to apply this equation to all frequencies from k = 0 to N-1. I have created a function below to do this and we can compare the result of this function to that of np.fft.fft which is a python library to generate the FFT of a vector. Here we are only ploting the real part of the wave which gives us the amplitude or its "contribution" to our frequency.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+def dft(signal):
+  N = len(signal) # The length of the input signal
+  X = np.zeros(N, dtype = np.complex128) # Creating the output vector of same length
+  for k in range(N): # Looping through frequency index
+    for n in range(N): # Looping through time index
+      X[k] += signal[n] * np.exp(-2j * np.pi * k * n / N) # Euler's formula to find calculate complex exponential term
+  return X
+
+dft_signal = dft(signal)
+
+plt.close('all')
+plt.plot(t, abs(dft_signal))
+plt.title('Real Part of the DFT of the signal (Custom Function)')
+plt.xlabel('Frequency (HZ)')
+plt.ylabel('Amplitude')
+plt.show()
+
+np_fft = np.fft.fft(signal)
+plt.close('all')
+plt.plot(t, abs(np_fft))
+plt.title('Real Part of the DFT of the signal (Numpy Function)')
+plt.xlabel('Frequency (HZ)')
+plt.ylabel('Amplitude')
+plt.show()
+
+```
+
+We see that the peak is exactly where we expect at 20 HZ. Additionally there is a second signal at 980 HZ this has to do with the symmetry of of the FFT. Briefly, when we use Euler's formula above what we are really saying is that the Taylor series expansion of e^j * theta is equal to the Taylor series expansion of cos(theta) + isin(theta). It turns out that the cos(theta) picks up the even terms in this series and sin(theta) picks up the odd terms in this series. Hence since the amplitude we are ploting is a function of the real (cos) part, our resulting vector is symmetric about the origin. 
+
+#### Side Note
+
+It is interesting to note that instead of sequentially multiply our l vectors we can instead generate a matrix L of all L vectors stacked row wise. We can then multiply this matrix by our original vector X to obtain the DFT. In this way the matrix L is a linear transformation from the spacial/temporal domain to the frequency domain. What's even more interesting is that the row's of L are orthogonal to on another. In the 2D FFT this has a deep connection to the SVD/ Eigen Decomposition of a matrix. I digress and save that topic for another day but I have included code below to show this
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+def dft(signal):
+  N = len(signal) # The length of the input signal
+  X = np.zeros((N,N), dtype = np.complex128) # Creating the output vector of same length
+  for k in range(N): # Looping through frequency index
+    for n in range(N): # Looping through time index
+      X[k,n] = np.exp(-2j * np.pi * k * n / N) # Euler's formula to find calculate complex exponential term
+  return X
+
+dft_signal = dft(signal)
+dft_output = np.dot(dft_signal, signal)
+
+plt.close('all')
+plt.plot(t, abs(dft_output))
+plt.title('Real Part of the DFT of the signal (Matrix Multiplication)')
+plt.xlabel('Frequency (HZ)')
+plt.ylabel('Amplitude')
+plt.show()
+```
+
+### IDFT
+
+
