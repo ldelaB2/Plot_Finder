@@ -1,7 +1,6 @@
 ---
-title: "Plot_Finder_Description"
+title: "Plot Finder Algorithm Description"
 author: "Will delaBretonne"
-date: "2023-12-18"
 output: 
   html_document:
     toc: true
