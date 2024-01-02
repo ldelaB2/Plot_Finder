@@ -9,7 +9,7 @@
 
 <nav>
     <ul>
-        <li><a href="Plot_finder_Description.html">Home</a></li>
+        <li><a href="Plot_finder_Description.html">Algorithm_Description</a></li>
     </ul>
 </nav>
 
