@@ -25,7 +25,7 @@ LAST_FOLDER=$(basename $IRODS_PATH)
 SCRIPT_PATH="/app/working_directory/$LAST_FOLDER"
 
 # Running the script
-python3 /app/main.py $SCRIPT_PATH
+python3 /app/scripts/main.py $SCRIPT_PATH
 
 # Pushing results to cyverse
 cd $SCRIPT_PATH
