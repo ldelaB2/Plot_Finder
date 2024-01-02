@@ -1,2 +1,2 @@
 "test"
-[View HTML](doc/Plot_fider_Description.html)
+[View HTML](docs/Plot_fider_Description.html)
