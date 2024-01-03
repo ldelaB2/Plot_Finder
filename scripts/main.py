@@ -27,7 +27,7 @@ def main():
 
     # Box radius is the size of sub images; 0 = height, 1 = width
     boxradius = (800, 500)
-
+    
     # Create ortho photo classes
     print(f"Reading Images from: \n{input_path} \nSaving Output to: \n{output_path}")
     ortho_photos = [ortho_photo(input_path, output_path, image) for image in os.listdir(input_path)]

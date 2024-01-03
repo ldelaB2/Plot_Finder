@@ -131,3 +131,5 @@ class sub_image:
     def disp_subI(self):
         plt.imshow(self.image, cmap='grey')
         plt.show()
+
+    
