@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from ortho_photo import ortho_photo
 
 #Here is some new comment
+# Here is another comment
+
 
 def main():
     # Starting to measure memory and time
