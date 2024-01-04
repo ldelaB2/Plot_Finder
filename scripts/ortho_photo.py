@@ -6,6 +6,8 @@ from PIL import Image
 from functions import *
 from wave_pad import wavepad
 from sub_image import sub_image
+from rectangles import rectangle
+from impute_rectangles import impute_rectangles
 
 class ortho_photo:
     def __init__(self, in_path, out_path, name):
@@ -116,35 +118,40 @@ class ortho_photo:
             plt.imshow(range_filtered_disp)
             plt.show()
 
-    def find_plots(self, ncore):
+    def find_plots(self, ncore, poly_degree_range, poly_degree_col):
         self.filtered_wavepad = wavepad(self.row_wavepad_binary, self.range_wavepad_binary, self.QC_path, ncore)
-        self.compute_col_skel()
-        self.compute_range_skel()
+        self.compute_col_skel(poly_degree_col)
+        self.compute_range_skel(poly_degree_range)
         self.find_rectangles()
         
     def find_rectangles(self):
-        real_rect = self.filtered_wavepad.compute_rectangles()
-        real_rect.img_rgb = self.rgb_ortho
-        real_rect.img_g = self.g_ortho
-        #rect_fig = real_rect.disp_rectangles()
-        nrow = 96
-        real_rect.impute_rows(nrow, self.filtered_wavepad.col_skel)
+        range_bool = self.range_skel.astype(bool)
+        col_bool = self.col_skel.astype(bool)
+        cp = np.argwhere(range_bool & col_bool)
+
+        # Computing the training rectangles
+        train_rect = rectangle(cp)
+        #train_rect.disp_rectangles(self.rgb_ortho)
+        train_rect.compute_score(self.g_ortho)
+        ncol = 96
+        nrange = 6
+
+        # Finding all rows and ranges
+        impute_rectangles(train_rect, self.col_skel, self.range_skel, self.g_ortho, ncol, nrange)
+
+
 
         
-        #name = 'Real_Rectangles'
-        #path = os.path.join(self.QC_path, name)
-        #rect_fig.savefig(path, bbox_inches='tight', pad_inches=0, transparent=True)
-
-    def compute_range_skel(self):
-        real_range_output = self.filtered_wavepad.find_ranges()
+    def compute_range_skel(self, poly_degree):
+        real_range_output, self.range_skel = self.filtered_wavepad.find_ranges(poly_degree)
         name = 'Real_Range_Skel.jpg'
         real_range_output = flatten_mask_overlay(self.rgb_ortho, real_range_output)
         real_range_output.save(os.path.join(self.QC_path, name))
         print("Saved Range Skeletonization QC")
 
-    def compute_col_skel(self):
-        real_col_output = self.filtered_wavepad.find_columns()
-        imputed_col_output = self.filtered_wavepad.imput_col_skel()
+    def compute_col_skel(self, poly_degree):
+        real_col_output = self.filtered_wavepad.find_columns(poly_degree)
+        imputed_col_output, self.col_skel = self.filtered_wavepad.imput_col_skel()
         name = 'Real_Column_Skel.jpg'
         real_col_output = flatten_mask_overlay(self.rgb_ortho, real_col_output)
         real_col_output.save(os.path.join(self.QC_path, name))

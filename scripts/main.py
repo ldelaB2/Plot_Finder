@@ -4,10 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ortho_photo import ortho_photo
 
-#Here is some new comment
-# Here is another comment
-
-
 def main():
     # Starting to measure memory and time
     tracemalloc.start()
@@ -77,7 +73,9 @@ def main():
         # Creating wavepad object
         current_photo.build_wavepad(disp = False)
         # Finding plots
-        current_photo.find_plots(ncore = num_cores)
+        poly_degree_range = 3
+        poly_degree_col = 1
+        current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_col, poly_degree_col = poly_degree_col)
 
 
 

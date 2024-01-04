@@ -4,12 +4,55 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
+from functions import eludian_distance, find_points, bindvec
 
 class rectangle:
-    def __init__(self):
+    def __init__(self, cp):
         self.rect_list = []
-        self.img_rgb = None
-        self.img_g = None
+        self.cp = cp
+        self.compute_rectangles()
+        
+
+    def compute_rectangles(self):
+        cp = eludian_distance((0,0),self.cp, return_points = True)
+
+        # Sorting the points into ranges
+        sorted_points = []
+
+        while True:
+            start_point = cp[0,:]
+            cp = cp[1:, :]
+
+            temp_range_points = []
+            temp_range_points.append(start_point)
+            flag = [False]
+            find_points(start_point, cp, temp_range_points, flag)
+            temp_range_points = np.array(temp_range_points)
+            sorted_points.append(temp_range_points)
+            if flag[0]:
+                break
+            else:
+                set1 = set(map(tuple, temp_range_points))
+                set2 = set(map(tuple, cp))
+                new_cp = set2.difference(set1)
+                new_cp = np.array(list(new_cp))
+                cp = eludian_distance((0, 0), new_cp, return_points=True)
+
+        # Finding the rectangles
+        for e in range(len(sorted_points) - 1):
+            top_points = sorted_points[e]
+            bottom_points = sorted_points[e + 1]
+
+            if top_points.shape[0] != bottom_points.shape[0]:
+                print("Warning Num points in top and bottom not equal")
+            else:
+                for k in range(top_points.shape[0] - 1):
+                    top_left = top_points[k,:]
+                    top_right = top_points[k + 1,:]
+                    bottom_left = bottom_points[k,:]
+                    bottom_right = bottom_points[k + 1,:]
+                    points = [top_left, top_right, bottom_left, bottom_right]
+                    self.four_2_five_rect(points)
 
     def four_2_five_rect(self, points):
         top_left, top_right, bottom_left, bottom_right = points
@@ -23,10 +66,10 @@ class rectangle:
         rect = (center, width, height, 0)
         self.rect_list.append(rect)
 
-    def disp_rectangles(self):
+    def disp_rectangles(self, img):
         plt.close('all')
         fig, ax = plt.subplots(1)
-        ax.imshow(self.img)
+        ax.imshow(img)
 
         for rect in self.rect_list:
             bottom_left = rect[0] - (rect[2], rect[1])
@@ -35,7 +78,6 @@ class rectangle:
             ax.add_patch(rect_patch)
             
         ax.set_axis_off()
-        ax.set_aspect(2)
         return fig
     
     def create_unit_square(self):
@@ -80,24 +122,25 @@ class rectangle:
             extracted_img = np.reshape(extracted_img, (self.unit_height, self.unit_width, img.shape[2]))
         else:
             extracted_img = img[rotated_points[:, 1], rotated_points[:, 0]]
-            extracted_img = np.reshape(extracted_img, (self.unit_height, self.unit_width, 1))
+            extracted_img = np.reshape(extracted_img, (self.unit_height, self.unit_width))
             
         return extracted_img
         
     def compute_fft_score(self, img):
         sig = np.sum(img, axis = 0)
         fsig = fftshift(fft(sig - np.mean(sig)))
-        amp = abs(fsig)
+        amp = bindvec(abs(fsig))
         return amp
     
-    def compute_train_set(self):
-        train_set = []
-        for rect in self.rect_list:
-            img = self.extract_rectangle(rect, self.img_g)
-            fsig = self.compute_fft_score(img)
-            train_set.append(fsig)
+    def compute_score(self, img):
+        self.compute_stats()
+        scores = np.zeros((len(self.rect_list), self.mean_width*2 + 1))
+        for e,rect in enumerate(self.rect_list):
+            sub_img = self.extract_rectangle(rect, img)
+            fsig = self.compute_fft_score(sub_img)
+            scores[e,:] = fsig
 
-        self.train_set = train_set
+        self.scores = scores
             
         
 
@@ -106,6 +149,7 @@ class rectangle:
         height = np.array(list(map(itemgetter(2), self.rect_list)))
         self.mean_width = np.mean(width).astype(int)
         self.mean_height = np.mean(height).astype(int)
+        self.create_unit_square()
     
     
     def impute_rows(self, nrow, col_skel):

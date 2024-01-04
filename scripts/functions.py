@@ -17,8 +17,7 @@ def build_path(img_shape, boxradius, skip):
     num_points = path.shape[0]
     
     return path, num_points
-    
-    
+
 def find_points(start_point, points, point_list, flag):
     next_point = eludian_distance(start_point, points, True)[0, :]
     if next_point[1] < start_point[1]:
@@ -84,15 +83,22 @@ def findmaxpeak(signal, mask = None):
     return out
 
 def find_center_line(args):
-    obj_labeled_img, indx = args
+    obj_labeled_img, indx, poly_degree, img_size = args
     
     subset_y = np.column_stack(np.where(obj_labeled_img == indx))
     # Calculate mean 'x' for each 'y'
     unique_vales, counts = np.unique(subset_y[:, 0], return_counts=True)
     x_position = np.bincount(subset_y[:, 0], weights=subset_y[:, 1])
     mean_x_values = (x_position[unique_vales] / counts).astype(int)
+    # Fit a polynomial to these points
+    coefficients = np.polyfit(unique_vales, mean_x_values, poly_degree)
+    poly = np.poly1d(coefficients)
+    # Get the x and y coordinates
+    x = np.arange(0, img_size, 1)
+    y = poly(x).astype(int)
     # Create a list of tuples for the centerline
-    centerline = list(zip(unique_vales, mean_x_values))
+    centerline = list(zip(y, x))
+
     return centerline
 
 # Normalize a vector
