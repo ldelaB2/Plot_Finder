@@ -2,9 +2,8 @@ from operator import itemgetter
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
-from functions import eludian_distance, find_points, bindvec
+from functions import  bindvec
 
 class rectangle:
     def __init__(self, rect_list):

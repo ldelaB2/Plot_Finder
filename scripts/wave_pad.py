@@ -7,12 +7,40 @@ from PIL import Image
 
 class wavepad:
     def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output, ncore):
+        """
+        Initializes the wavepad object.
+
+        Parameters:
+            row_wavepad_binary (ndarray): The row wavepad binary image.
+            range_wavepad_binary (ndarray): The range wavepad binary image.
+            QC_output (str): The path to the output directory for quality control.
+            ncore (int): The number of cores to use for parallel processing.
+
+        The function initializes the wavepad object with the provided row and range wavepad binary images, output path, and number of cores.
+        """
         self.row_wavepad_binary = row_wavepad_binary
         self.range_wavepad_binary = range_wavepad_binary
         self.output_path = QC_output
         self.ncore = ncore
 
     def find_ranges(self, poly_degree):
+        """
+        This method finds the ranges in the wavepad image.
+
+        Parameters:
+            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
+
+        Returns:
+            tuple: A tuple containing the dilated skeleton image and the original skeleton image.
+
+        The method first closes and blurs the range wavepad binary image.
+        It then trims the borders of the image and finds the connected components in the image.
+        It calculates the normalized areas of the connected components and finds the components that are the correct size.
+        It then filters out the incorrect size components and saves the filtered image.
+        It finds the connected components in the filtered image and draws a center line through each component by fitting a polynomial to the mean 'y' values for each 'x'.
+        Finally, it dilates the skeleton image and returns the dilated image and the original skeleton image.
+        """
+        
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
         tmp = cv.morphologyEx(self.range_wavepad_binary, cv.MORPH_CLOSE, kernel)
@@ -86,6 +114,22 @@ class wavepad:
         return dialated_skel, skel
 
     def find_columns(self, poly_degree):
+        """
+        This method finds the columns in the wavepad image.
+
+        Parameters:
+            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
+
+        Returns:
+            ndarray: The dilated skeleton image.
+
+        The method first closes and blurs the row wavepad binary image.
+        It then finds the connected components in the image and calculates the normalized areas of these components.
+        It finds the components that are the correct size and filters out the incorrect size components, saving the filtered image.
+        It finds the connected components in the filtered image and draws a center line through each component by fitting a polynomial to the mean 'y' values for each 'x'.
+        Finally, it dilates the skeleton image and returns the dilated image.
+        """
+
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20,20))
         tmp = cv.morphologyEx(self.row_wavepad_binary, cv.MORPH_CLOSE, kernel)
@@ -146,6 +190,20 @@ class wavepad:
         return dialated_skel
 
     def imput_col_skel(self):
+        """
+        This method imputes missing columns in the wavepad image.
+
+        Returns:
+            tuple: A tuple containing the dilated skeleton image and the original skeleton image.
+
+        The method first dilates the real column skeleton image and finds the connected components in the image.
+        It calculates the distances between the centroids of the connected components and finds the mode of these distances.
+        It then finds the columns that need to be imputed and the number of columns to impute.
+        If no columns need to be imputed, it dilates the real column skeleton image and returns the dilated image and the original skeleton image.
+        Otherwise, it imputes the missing columns by interpolating between the existing columns.
+        It then dilates the column skeleton image and returns the dilated image and the original skeleton image.
+        """
+
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10))
         tmp = cv.dilate(self.real_col_skel, kernel)
         num_col, labeled_skel, stats, centroids = cv.connectedComponentsWithStats(np.transpose(tmp))

@@ -304,3 +304,30 @@ def process_phase2_1core(self, FreqFilterWidth, row_mask, range_mask, num_pixles
         ax.set_axis_off()
         return fig
      
+
+     def find_points(start_point, points, point_list, flag):
+    next_point = eludian_distance(start_point, points, True)[0, :]
+    if (np.linalg.norm(next_point - start_point).astype(int)) > 150:
+        return
+    else:
+        point_list.append(next_point)
+        indx = np.where((points[:, 0] == next_point[0]) & (points[:, 1] == next_point[1]))
+        points = np.delete(points, indx, axis=0)
+        if points.shape[0] == 1:
+            point_list.append(points[0,:])
+            flag[0] = True
+            return
+        else:
+            find_points(next_point, points, point_list, flag)
+
+
+def eludian_distance(target, points, return_points=False):
+    target = np.array(target)
+    points = np.array(points)
+    dist = np.sqrt(np.sum((target - points) ** 2, axis=1))
+    if return_points:
+        indx = np.argsort(dist)
+        points = points[indx]
+        return points
+    else:
+        return dist

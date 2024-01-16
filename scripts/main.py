@@ -11,8 +11,8 @@ def main():
     # Local
     raw_path = '/Users/willdelabretonne/Documents/Code/Python/OOP_Plot_Finder/test_imgs'
     #Docker
-    #raw_path = sys.argv[1]
-
+    #raw_path = sys.argv[1]  
+    
     # Creating input arguments
     num_cores, input_path, output_path = create_input_args(raw_path)
     print(f"Using {num_cores} cores to process image")
@@ -37,14 +37,14 @@ def main():
         sparse_skip = (100,100)
         # @Param FreqFilterWidth: Controls how many frequencies we let in when searching
         FreqFilterWidth = 1
-        # @Param vert_sig_remove: How many frequencies around the center to set to 0
-        vert_sig_remove = 5
+        # @Param row_sig_remove: How many frequencies around the center to set to 0
+        row_sig_remove = 5
         # @Param num_sig_returned: How many frequencies to include in the mask
         num_sig_returned = 2
 
         # Building Sparse Path then Compute Phase 1 and build frequency mask
         current_photo.build_scatter_path(boxradius, sparse_skip, expand_radi = None, disp = False)
-        current_photo.phase1(FreqFilterWidth, num_sig_returned, vert_sig_remove, disp = False)
+        current_photo.phase1(FreqFilterWidth, num_sig_returned, row_sig_remove, disp = False)
         print("Finished processing sparse grid")
 
         # --------------------------Processing Fine Grid ------------------------------------
@@ -68,16 +68,17 @@ def main():
         poly_degree_col = 1
         current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_range, poly_degree_col = poly_degree_col)
 
+        #Reporting memory and time usage
+        current_mem, peak_mem = tracemalloc.get_traced_memory()
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+       
+        print(f"Current memory usage: {current_mem / (1024 ** 3):.2f} GB")
+        print(f"Peak memory usage: {peak_mem / (1024 ** 3):.2f} GB")
+        print(f"Time taken: {elapsed_time / 60:.2f} minutes")
 
-
-    #Reporting memory and time usage
-    current_mem, peak_mem = tracemalloc.get_traced_memory()
-    end_time = time.time()
-    elapsed_time = end_time - start_time
     tracemalloc.stop()
-    print(f"Current memory usage: {current_mem / (1024 ** 3):.2f} GB")
-    print(f"Peak memory usage: {peak_mem / (1024 ** 3):.2f} GB")
-    print(f"Time taken: {elapsed_time / 60:.2f} minutes")
+    
 
 
 if __name__ == '__main__':

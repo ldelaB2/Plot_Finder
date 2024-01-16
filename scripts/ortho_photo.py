@@ -7,7 +7,6 @@ from functions import *
 from wave_pad import wavepad
 from sub_image import sub_image
 from rectangles import rectangle
-from impute_rectangles import impute_rectangles
 
 class ortho_photo:
     def __init__(self, in_path, out_path, name):
@@ -148,35 +147,47 @@ class ortho_photo:
                 plt.axis('on')
             plt.show()
 
-    def phase1(self, FreqFilterWidth, num_sig_returned, vert_sig_remove, disp = False):
-            #Find the signals
-            # Preallocate memory
-            range_waves = np.zeros((self.num_points, (2 * self.boxradius[0])))
-            row_waves = np.zeros((self.num_points, (2 * self.boxradius[1])))
+    def phase1(self, FreqFilterWidth, num_sig_returned, row_sig_remove, disp = False):
+        """
+        This method performs the first phase of the image processing.
 
-            # Loop through sparse grid; returning the abs of Freq Wave
-            for e in range(self.num_points):
-                center = self.point_grid[e]
-                subI = sub_image(self.g_ortho, self.boxradius, center)
-                row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
+        Parameters:
+            FreqFilterWidth (int): The width of the frequency filter to be used.
+            num_sig_returned (int): The number of signals to return.
+            row_sig_remove (int): If the number of row signals to remove.
+            disp (bool, optional): If True, it will display the average row and range signals.
 
-            # Finding dominant frequency in row (column) direction
-            row_sig = np.mean(row_waves, 0)
-            # Finding dominant frequency in range (row) direction
-            range_sig = np.mean(range_waves, 0)
+        Attributes Created:
+            self.row_mask: The mask created for the row signals.
+            self.range_mask: The mask created for the range signals.
+        """
+        # Preallocate memory
+        range_waves = np.zeros((self.num_points, (2 * self.boxradius[0])))
+        row_waves = np.zeros((self.num_points, (2 * self.boxradius[1])))
 
-            if disp:
-                fig, axes = plt.subplots(nrows=1, ncols=2)
-                axes[0].plot(row_sig)
-                axes[0].set_title('Avg Row Signal')
-                axes[1].plot(range_sig)
-                axes[1].set_title('Avg Range Signal')
-                plt.tight_layout()
-                plt.show()
-                
-            # Creating the masks
-            self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], vert_sig_remove, disp)
-            self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
+        # Loop through sparse grid; returning the abs of Freq Wave
+        for e in range(self.num_points):
+            center = self.point_grid[e]
+            subI = sub_image(self.g_ortho, self.boxradius, center)
+            row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
+
+        # Finding dominant frequency in row (column) direction
+        row_sig = np.mean(row_waves, 0)
+        # Finding dominant frequency in range (row) direction
+        range_sig = np.mean(range_waves, 0)
+
+        if disp:
+            fig, axes = plt.subplots(nrows=1, ncols=2)
+            axes[0].plot(row_sig)
+            axes[0].set_title('Avg Row Signal')
+            axes[1].plot(range_sig)
+            axes[1].set_title('Avg Range Signal')
+            plt.tight_layout()
+            plt.show()
+            
+        # Creating the masks
+        self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], row_sig_remove, disp)
+        self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
 
     def build_wavepad(self, disp):
         self.row_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
