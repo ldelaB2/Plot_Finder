@@ -2,6 +2,25 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 from PIL import Image
+import multiprocessing, os
+
+def create_input_args(raw_path, ncore = None):
+    if ncore is None:
+        ncore = multiprocessing.cpu_count()
+        if ncore is None:
+            ncore = os.cpu_count()
+            if ncore is None:
+                ncore = 1
+    
+    input_path = os.path.join(raw_path, 'Images')
+    output_path = os.path.join(raw_path, 'Output')
+    try:
+        os.mkdir(output_path)
+    except:
+        pass
+    
+    return ncore, input_path, output_path
+
 
 def build_path(img_shape, boxradius, skip):
     str1 = 1 + boxradius[0]
@@ -18,9 +37,56 @@ def build_path(img_shape, boxradius, skip):
     
     return path, num_points
 
+def build_rectangles(range_skel, col_skel):
+    def dialated_labeled_skel(skel):
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
+        dialated_skel = cv.dilate(skel, kernel)
+        num_obj, labeled_skel, stats, centroids = cv.connectedComponentsWithStats(dialated_skel)
+        return num_obj, labeled_skel, stats, centroids
+    
+    def four_2_five_rect(points):
+        top_left, top_right, bottom_left, bottom_right = points
+        w1 = np.linalg.norm(top_left - top_right)
+        w2 = np.linalg.norm(bottom_left - bottom_right)
+        h1 = np.linalg.norm(top_left - bottom_left)
+        h2 = np.linalg.norm(top_right - bottom_right)
+        width = ((w1 + w2)/4).astype(int)
+        height = ((h1 + h2)/4).astype(int)
+        center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
+        rect = (center, width, height, 0)
+        return rect
+
+
+    num_ranges, ld_range, _, _ = dialated_labeled_skel(range_skel)
+    
+    range_bool = range_skel.astype(bool)
+    col_bool = col_skel.astype(bool)
+    cp = set(map(tuple, np.argwhere(col_bool & range_bool)))
+    rect_list = []
+
+    for e in range(1, num_ranges - 1):
+        top_indx = set(map(tuple, np.argwhere(ld_range == e)))
+        bottom_indx = set(map(tuple, np.argwhere(ld_range == e + 1)))
+        top_points = np.array(list(cp.intersection(top_indx)))
+        bottom_points = np.array(list(cp.intersection(bottom_indx)))
+        top_points = top_points[np.argsort(top_points[:,1])]
+        bottom_points = bottom_points[np.argsort(bottom_points[:,1])]
+
+        for k in range(top_points.shape[0] - 1):
+            top_left = top_points[k,:]
+            top_right = top_points[k + 1,:]
+            bottom_left = bottom_points[k,:]
+            bottom_right = bottom_points[k + 1,:]
+            points = [top_left, top_right, bottom_left, bottom_right]
+            rect = four_2_five_rect(points)
+            rect_list.append(rect)
+    
+    return rect_list
+        
+
 def find_points(start_point, points, point_list, flag):
     next_point = eludian_distance(start_point, points, True)[0, :]
-    if next_point[1] < start_point[1]:
+    if (np.linalg.norm(next_point - start_point).astype(int)) > 150:
         return
     else:
         point_list.append(next_point)

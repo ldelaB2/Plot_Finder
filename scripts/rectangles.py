@@ -7,85 +7,17 @@ from numpy.fft import fft, fftshift
 from functions import eludian_distance, find_points, bindvec
 
 class rectangle:
-    def __init__(self, cp):
-        self.rect_list = []
-        self.cp = cp
-        self.compute_rectangles()
-        
+    def __init__(self, rect_list):
+        self.rect_list = rect_list
+        self.compute_stats()
 
-    def compute_rectangles(self):
-        cp = eludian_distance((0,0),self.cp, return_points = True)
-
-        # Sorting the points into ranges
-        sorted_points = []
-
-        while True:
-            start_point = cp[0,:]
-            cp = cp[1:, :]
-
-            temp_range_points = []
-            temp_range_points.append(start_point)
-            flag = [False]
-            find_points(start_point, cp, temp_range_points, flag)
-            temp_range_points = np.array(temp_range_points)
-            sorted_points.append(temp_range_points)
-            if flag[0]:
-                break
-            else:
-                set1 = set(map(tuple, temp_range_points))
-                set2 = set(map(tuple, cp))
-                new_cp = set2.difference(set1)
-                new_cp = np.array(list(new_cp))
-                cp = eludian_distance((0, 0), new_cp, return_points=True)
-
-        # Finding the rectangles
-        for e in range(len(sorted_points) - 1):
-            top_points = sorted_points[e]
-            bottom_points = sorted_points[e + 1]
-
-            if top_points.shape[0] != bottom_points.shape[0]:
-                print("Warning Num points in top and bottom not equal")
-            else:
-                for k in range(top_points.shape[0] - 1):
-                    top_left = top_points[k,:]
-                    top_right = top_points[k + 1,:]
-                    bottom_left = bottom_points[k,:]
-                    bottom_right = bottom_points[k + 1,:]
-                    points = [top_left, top_right, bottom_left, bottom_right]
-                    self.four_2_five_rect(points)
-
-    def four_2_five_rect(self, points):
-        top_left, top_right, bottom_left, bottom_right = points
-        w1 = np.linalg.norm(top_left - top_right)
-        w2 = np.linalg.norm(bottom_left - bottom_right)
-        h1 = np.linalg.norm(top_left - bottom_left)
-        h2 = np.linalg.norm(top_right - bottom_right)
-        width = ((w1 + w2)/4).astype(int)
-        height = ((h1 + h2)/4).astype(int)
-        center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
-        rect = (center, width, height, 0)
-        self.rect_list.append(rect)
-
-    def disp_rectangles(self, img):
-        plt.close('all')
-        fig, ax = plt.subplots(1)
-        ax.imshow(img)
-
-        for rect in self.rect_list:
-            bottom_left = rect[0] - (rect[2], rect[1])
-            bottom_left = bottom_left[::-1]
-            rect_patch = patches.Rectangle(bottom_left, (rect[1] * 2), (rect[2] * 2), linewidth=2, edgecolor='r', facecolor='none')
-            ax.add_patch(rect_patch)
-            
-        ax.set_axis_off()
-        return fig
     
     def create_unit_square(self):
-        self.unit_width = self.mean_width*2 + 1
-        self.unit_height = self.mean_height*2 + 1
+        unit_width = self.mean_width*2 + 1
+        unit_height = self.mean_height*2 + 1
         # Creating the unit square
-        y = np.linspace(-1, 1, self.unit_height)
-        x = np.linspace(-1, 1, self.unit_width)
+        y = np.linspace(-1, 1, unit_height)
+        x = np.linspace(-1, 1, unit_width)
         X, Y = np.meshgrid(x, y)
         unit_sqr = np.column_stack((X.ravel(), Y.ravel(), np.ones_like(X.ravel())))
         self.unit_sqr = unit_sqr
@@ -126,24 +58,36 @@ class rectangle:
             
         return extracted_img
         
-    def compute_fft_score(self, img):
-        sig = np.sum(img, axis = 0)
-        fsig = fftshift(fft(sig - np.mean(sig)))
-        amp = bindvec(abs(fsig))
-        return amp
     
-    def compute_score(self, img):
-        self.compute_stats()
+    def compute_fft_score(self, img):
+        def compute_fft_score(img):
+            sig = np.sum(img, axis = 0)
+            fsig = fftshift(fft(sig - np.mean(sig)))
+            amp = bindvec(abs(fsig))
+            return amp
+
         scores = np.zeros((len(self.rect_list), self.mean_width*2 + 1))
+        for e,rect in enumerate(self.rect_list):
+            sub_img = self.extract_rectangle(rect, img)
+            fsig = compute_fft_score(sub_img)
+            scores[e,:] = fsig
+
+        self.fft_scores = scores
+
+    def compute_histogram_score(self, img):
+
+        def compute_histogram(img):
+            print("T")
+
+        histogram = np.zeros((len(self.rect_list), self.mean_width*2 + 1))
         for e,rect in enumerate(self.rect_list):
             sub_img = self.extract_rectangle(rect, img)
             fsig = self.compute_fft_score(sub_img)
             scores[e,:] = fsig
 
-        self.scores = scores
+        self.histograms = scores
             
-        
-
+    
     def compute_stats(self):
         width = np.array(list(map(itemgetter(1), self.rect_list)))
         height = np.array(list(map(itemgetter(2), self.rect_list)))
@@ -151,7 +95,11 @@ class rectangle:
         self.mean_height = np.mean(height).astype(int)
         self.create_unit_square()
     
-    
+    def optomize_placement(self, img):
+        self.compute_histogram_score(img)
+        sum_img = self.extract_rectangle(rect, img)
+
+
     def impute_rows(self, nrow, col_skel):
         self.compute_stats()
         self.create_unit_square()

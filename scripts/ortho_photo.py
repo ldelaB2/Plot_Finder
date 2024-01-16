@@ -11,28 +11,83 @@ from impute_rectangles import impute_rectangles
 
 class ortho_photo:
     def __init__(self, in_path, out_path, name):
-        self.name = name[:-4]
+        """
+        This is the constructor method for the ortho_photo class.
+
+        Parameters:
+            in_path (str): The input directory where the original photo is located.
+            out_path (str): The output directory where the processed photo and other outputs will be saved.
+            name (str): The name of the photo file.
+
+        Attributes Created:
+            self.name: The name of the photo file without its extension.
+            self.in_path: The full path to the photo file.
+            self.out_path: The output directory where the processed photo and other outputs will be saved.
+            self.QC_path: The path to the "QC" subdirectory within the output directory.
+            self.plots_path: The path to the "plots" subdirectory within the output directory.
+        """
+        self.name = os.path.splitext(name)[0]
         self.in_path = os.path.join(in_path, name)
         self.out_path = out_path
         self.create_output_dirs()
 
     def create_output_dirs(self):
+        """
+        This method creates the necessary output directories for the ortho_photo object.
+
+        It first constructs the path to the subdirectory within the output directory, using the name of the ortho_photo object.
+        Then, it creates two subdirectories within this subdirectory: "QC" and "plots".
+
+        If the directories already exist, it will not throw an error but simply pass.
+
+        Attributes Created:
+            self.QC_path: The path to the "QC" subdirectory within the output directory.
+            self.plots_path: The path to the "plots" subdirectory within the output directory.
+        """
         subdir = os.path.join(self.out_path, self.name)
         self.QC_path = os.path.join(subdir, "QC")
         self.plots_path = os.path.join(subdir, "plots")
         try:
             os.mkdir(subdir)
-            os.mkdir(self.plots_path)
-            os.mkdir(self.QC_path)
+            try:
+                os.mkdir(self.plots_path)
+            except:
+                pass
+            try:
+                os.mkdir(self.QC_path)
+            except:
+                pass
         except:
             pass
 
     def read_inphoto(self):
+        """
+        This method reads the input photo into memory and performs initial processing.
+
+        It first reads the photo from the file path stored in self.in_path using OpenCV's imread function, storing the result in self.rgb_ortho.
+        Then, it calls the create_g method to create a grayscale version of the image.
+        Finally, it calls the rotate_img method to rotate the image.
+
+        Attributes Created:
+            self.rgb_ortho: The original photo read into memory as an array.
+        """
         self.rgb_ortho = cv.imread(self.in_path)
         self.create_g()
         self.rotate_img()
 
     def rotate_img(self):
+        """
+        This method rotates the grayscale and RGB versions of the image by a specified angle.
+
+        It first calculates the rotation matrix for the specified angle using OpenCV's getRotationMatrix2D function.
+        Then, it calculates the dimensions of the new image that will contain all the original image after rotation.
+        It adjusts the translation part of the rotation matrix to prevent cropping of the image.
+        Finally, it applies the rotation to the grayscale and RGB versions of the image using OpenCV's warpAffine function.
+
+        Attributes Modified:
+            self.g_ortho: The grayscale version of the photo, rotated by the specified angle.
+            self.rgb_ortho: The RGB version of the photo, rotated by the specified angle.
+        """
         theta = 1
         
         height, width = self.g_ortho.shape[:2]
@@ -53,9 +108,31 @@ class ortho_photo:
         self.rgb_ortho = cv.warpAffine(self.rgb_ortho, rotation_matrix, (new_width, new_height))
 
     def create_g(self):
+        """
+        This method creates a grayscale version of the input photo.
+
+        It uses OpenCV's cvtColor function to convert the RGB image to LAB color space and then extracts the L channel (lightness) to create a grayscale image.
+
+        Attributes Created:
+            self.g_ortho: The grayscale version of the photo.
+        """
         self.g_ortho = cv.cvtColor(self.rgb_ortho, cv.COLOR_BGR2LAB)[:,:,2]
 
     def build_scatter_path(self, boxradius, skip, expand_radi = None, disp = False):
+        """
+        This method builds a scatter path on the grayscale image.
+
+        Parameters:
+            boxradius (int): The radius of the box to be used in the scatter path.
+            skip (tuple): The number of rows and columns to skip between points in the scatter path.
+            expand_radi (tuple, optional): The number of rows and columns to expand the scatter path. If provided, it will override the skip parameter.
+            disp (bool, optional): If True, it will display the scatter path on the grayscale image.
+
+        Attributes Created:
+            self.boxradius: The radius of the box to be used in the scatter path.
+            self.point_grid: A list of points in the scatter path.
+            self.num_points: The number of points in the scatter path.
+        """
         if expand_radi is not None:
             skip = ((1 + 2 * expand_radi[0]), (1 + 2 * expand_radi[1]))
             self.expand_radi = expand_radi
@@ -70,6 +147,36 @@ class ortho_photo:
                 plt.scatter(point[0], point[1], c='red', marker='*')
                 plt.axis('on')
             plt.show()
+
+    def phase1(self, FreqFilterWidth, num_sig_returned, vert_sig_remove, disp = False):
+            #Find the signals
+            # Preallocate memory
+            range_waves = np.zeros((self.num_points, (2 * self.boxradius[0])))
+            row_waves = np.zeros((self.num_points, (2 * self.boxradius[1])))
+
+            # Loop through sparse grid; returning the abs of Freq Wave
+            for e in range(self.num_points):
+                center = self.point_grid[e]
+                subI = sub_image(self.g_ortho, self.boxradius, center)
+                row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
+
+            # Finding dominant frequency in row (column) direction
+            row_sig = np.mean(row_waves, 0)
+            # Finding dominant frequency in range (row) direction
+            range_sig = np.mean(range_waves, 0)
+
+            if disp:
+                fig, axes = plt.subplots(nrows=1, ncols=2)
+                axes[0].plot(row_sig)
+                axes[0].set_title('Avg Row Signal')
+                axes[1].plot(range_sig)
+                axes[1].set_title('Avg Range Signal')
+                plt.tight_layout()
+                plt.show()
+                
+            # Creating the masks
+            self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], vert_sig_remove, disp)
+            self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
 
     def build_wavepad(self, disp):
         self.row_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
@@ -125,14 +232,13 @@ class ortho_photo:
         self.find_rectangles()
         
     def find_rectangles(self):
-        range_bool = self.range_skel.astype(bool)
-        col_bool = self.col_skel.astype(bool)
-        cp = np.argwhere(range_bool & col_bool)
+        train_rect = build_rectangles(self.range_skel, self.col_skel)
 
         # Computing the training rectangles
-        train_rect = rectangle(cp)
+        train_rect = rectangle
         #train_rect.disp_rectangles(self.rgb_ortho)
-        train_rect.compute_score(self.g_ortho)
+        train_rect.optomize_placement(self.rgb_ortho)
+        #train_rect.compute_fft_score(self.g_ortho)
         ncol = 96
         nrange = 6
 
@@ -160,35 +266,7 @@ class ortho_photo:
         imputed_col_output.save(os.path.join(self.QC_path, name))
         print("Saved Column Skeletonization QC")
 
-    def phase1(self, FreqFilterWidth, num_sig_returned, vert_sig_remove, disp = False):
-        #Find the signals
-        # Preallocate memory
-        range_waves = np.zeros((self.num_points, (2 * self.boxradius[0])))
-        row_waves = np.zeros((self.num_points, (2 * self.boxradius[1])))
-
-        # Loop through sparse grid; returning the abs of Freq Wave
-        for e in range(self.num_points):
-            center = self.point_grid[e]
-            subI = sub_image(self.g_ortho, self.boxradius, center)
-            row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
-
-        # Finding dominant frequency in row (column) direction
-        row_sig = np.mean(row_waves, 0)
-        # Finding dominant frequency in range (row) direction
-        range_sig = np.mean(range_waves, 0)
-
-        if disp:
-            fig, axes = plt.subplots(nrows=1, ncols=2)
-            axes[0].plot(row_sig)
-            axes[0].set_title('Avg Row Signal')
-            axes[1].plot(range_sig)
-            axes[1].set_title('Avg Range Signal')
-            plt.tight_layout()
-            plt.show()
-            
-        # Creating the masks
-        self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], vert_sig_remove, disp)
-        self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
+   
     
      
     def phase2(self, FreqFilterWidth, wave_pixel_expand, ncore = None):

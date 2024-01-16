@@ -1,8 +1,6 @@
-import os, functions, tracemalloc, time, sys
-import cv2 as cv
-import numpy as np
-import matplotlib.pyplot as plt
+import os, tracemalloc, time
 from ortho_photo import ortho_photo
+from functions import create_input_args
 
 def main():
     # Starting to measure memory and time
@@ -11,18 +9,12 @@ def main():
 
     # --------------------------Processing Ortho Photo ------------------------------------
     # Local
-    raw_path = '/Users/willdelabretonne/Documents/PycharmProjects/OOP_Plot_Finder/test_imgs'
+    raw_path = '/Users/willdelabretonne/Documents/Code/Python/OOP_Plot_Finder/test_imgs'
     #Docker
     #raw_path = sys.argv[1]
 
-    input_path = os.path.join(raw_path, 'Images')
-    output_path = os.path.join(raw_path, 'Output')
-    try:
-        os.mkdir(output_path)
-    except:
-        pass
-    num_cores = os.cpu_count()
-    #num_cores = 10
+    # Creating input arguments
+    num_cores, input_path, output_path = create_input_args(raw_path)
     print(f"Using {num_cores} cores to process image")
 
     # Box radius is the size of sub images; 0 = height, 1 = width
@@ -32,7 +24,6 @@ def main():
     print(f"Reading Images from: \n{input_path} \nSaving Output to: \n{output_path}")
     ortho_photos = [ortho_photo(input_path, output_path, image) for image in os.listdir(input_path)]
 
-    #for current_photo in ortho_photos:
     # Loop through all photos to process
     for current_photo in ortho_photos:
         current_photo = ortho_photos[6]
@@ -75,7 +66,7 @@ def main():
         # Finding plots
         poly_degree_range = 3
         poly_degree_col = 1
-        current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_col, poly_degree_col = poly_degree_col)
+        current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_range, poly_degree_col = poly_degree_col)
 
 
 
