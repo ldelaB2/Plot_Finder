@@ -6,7 +6,7 @@ from PIL import Image
 from functions import *
 from wave_pad import wavepad
 from sub_image import sub_image
-from rectangles import rectangle
+from rectangles import rectangle_list
 
 class ortho_photo:
     def __init__(self, in_path, out_path, name):
@@ -14,14 +14,14 @@ class ortho_photo:
         This is the constructor method for the ortho_photo class.
 
         Parameters:
-            in_path (str): The input directory where the original photo is located.
-            out_path (str): The output directory where the processed photo and other outputs will be saved.
+            in_path (str): The input directory where the image is located.
+            out_path (str): The output directory where the outputs will be saved.
             name (str): The name of the photo file.
 
         Attributes Created:
             self.name: The name of the photo file without its extension.
             self.in_path: The full path to the photo file.
-            self.out_path: The output directory where the processed photo and other outputs will be saved.
+            self.out_path: The full path to the photo specific output directory.
             self.QC_path: The path to the "QC" subdirectory within the output directory.
             self.plots_path: The path to the "plots" subdirectory within the output directory.
         """
@@ -84,8 +84,8 @@ class ortho_photo:
         Finally, it applies the rotation to the grayscale and RGB versions of the image using OpenCV's warpAffine function.
 
         Attributes Modified:
-            self.g_ortho: The grayscale version of the photo, rotated by the specified angle.
-            self.rgb_ortho: The RGB version of the photo, rotated by the specified angle.
+            self.g_ortho: The grayscale version of the photo, rotated counter clockwise by the specified angle.
+            self.rgb_ortho: The RGB version of the photo, rotated counter clockwise by the specified angle.
         """
         theta = 1
         
@@ -154,7 +154,7 @@ class ortho_photo:
         Parameters:
             FreqFilterWidth (int): The width of the frequency filter to be used.
             num_sig_returned (int): The number of signals to return.
-            row_sig_remove (int): If the number of row signals to remove.
+            row_sig_remove (int): The the number of row signals to remove.
             disp (bool, optional): If True, it will display the average row and range signals.
 
         Attributes Created:
@@ -189,13 +189,51 @@ class ortho_photo:
         self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], row_sig_remove, disp)
         self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
 
+    def phase2(self, FreqFilterWidth, wave_pixel_expand, ncore = None):
+        """
+        This method performs the second phase of the wavepad creation process.
+
+        Parameters:
+            FreqFilterWidth (int): The width of the frequency filter.
+            wave_pixel_expand (int): The number of pixels to expand the wavepad by.
+            ncore (int, optional): The number of cores to use for parallel processing. Defaults to None.
+
+        The method first creates a multiprocessing pool with the specified number of cores.
+        It then maps the `compute_phase2_fun` function to the pool, passing in the frequency filter width, row and range masks, wave pixel expansion, point grid, ortho photo, and box radius for each point in the point grid.
+        It reshapes the resulting raw wavepad and normalizes it to the range [0, 1].
+        Finally, it multiplies the raw wavepad by 255 and converts it to an unsigned 8-bit integer.
+        """
+        with multiprocessing.Pool(processes=ncore) as pool:
+            rawwavepad = pool.map(
+                compute_phase2_fun,
+                [(FreqFilterWidth, self.row_mask, self.range_mask, wave_pixel_expand, self.point_grid[e], self.g_ortho, self.boxradius) for e in range(self.num_points)])
+
+        # Invert the wavepad because we want the signal to be maxamized inbetween rows/ ranges
+        # The signal we find will always be what is white in the gray scale image
+        self.rawwavepad = np.array(rawwavepad).reshape(-1,2)
+        self.rawwavepad[:,0] = 1 - bindvec(self.rawwavepad[:,0])
+        self.rawwavepad[:,1] = 1 - bindvec(self.rawwavepad[:,1])
+        self.rawwavepad = (self.rawwavepad * 255).astype(np.uint8)
+
     def build_wavepad(self, disp):
+        """
+        This method builds the wavepad from the raw wavepad.
+
+        Parameters:
+            disp (bool, optional): Whether to display the wavepad. Defaults to False.
+
+        The method first normalizes the raw wavepad to the range [0, 1].
+        It then multiplies the normalized wavepad by 255 and converts it to an unsigned 8-bit integer.
+        If the disp parameter is True, it displays the wavepad.
+        Finally, it creates a wavepad object from the wavepad image and stores it in the wavepad attribute.
+        """
+
         self.row_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
         self.range_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
+        expand_radi = self.expand_radi
 
         for e in range(self.num_points):
             center = self.point_grid[e]
-            expand_radi = self.expand_radi
             rowstrt = center[1] - expand_radi[0]
             rowstp = center[1] + expand_radi[0] + 1
             colstrt = center[0] - expand_radi[1]
@@ -213,6 +251,17 @@ class ortho_photo:
         self.filter_wavepad(disp)
 
     def filter_wavepad(self, disp):
+        """
+        This method filters the wavepad images.
+
+        Parameters:
+            disp (bool): Whether to display the filtered images.
+
+        The method first applies Otsu's thresholding to the row and range wavepad images to create binary images.
+        It then erodes the binary images using a 5x5 kernel with 3 iterations.
+        It overlays the binary images on the RGB ortho photo and saves these images.
+        If the disp parameter is True, it displays the overlay images.
+        """
         _, self.row_wavepad_binary = cv.threshold(self.row_wavepad, 0, 1, cv.THRESH_OTSU)
         _, self.range_wavepad_binary = cv.threshold(self.range_wavepad, 0, 1, cv.THRESH_OTSU)
 
@@ -236,30 +285,47 @@ class ortho_photo:
             plt.imshow(range_filtered_disp)
             plt.show()
 
-    def find_plots(self, ncore, poly_degree_range, poly_degree_col):
+    def find_train_plots(self, ncore, poly_degree_range, poly_degree_col):
+        """
+        This method finds the plots in the wavepad image.
+
+        Parameters:
+            ncore (int): The number of cores to use for parallel processing.
+            poly_degree_range (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the range skeleton image.
+            poly_degree_col (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the column skeleton image.
+
+        The method first finds the ranges and columns in the wavepad image using the specified polynomial degrees.
+        It then imputes missing columns in the column skeleton image.
+        It finds the intersections of the range and column skeleton images to find the corner points of rectangles.
+        """
         self.filtered_wavepad = wavepad(self.row_wavepad_binary, self.range_wavepad_binary, self.QC_path, ncore)
         self.compute_col_skel(poly_degree_col)
         self.compute_range_skel(poly_degree_range)
-        self.find_rectangles()
-        
-    def find_rectangles(self):
-        train_rect = build_rectangles(self.range_skel, self.col_skel)
+        self.compute_train_plots()
 
-        # Computing the training rectangles
-        train_rect = rectangle
-        #train_rect.disp_rectangles(self.rgb_ortho)
+    def compute_train_plots(self):
+        starting_rect, range_cnt, row_cnt = build_rectangles(self.range_skel, self.col_skel)
+        train_rect = rectangle_list(starting_rect)
+        train_rect.disp_rectangles(self.rgb_ortho)
         train_rect.optomize_placement(self.rgb_ortho)
-        #train_rect.compute_fft_score(self.g_ortho)
-        ncol = 96
-        nrange = 6
-
-        # Finding all rows and ranges
-        impute_rectangles(train_rect, self.col_skel, self.range_skel, self.g_ortho, ncol, nrange)
-
-
-
         
+        
+    def find_all_plots(self, ncore, nrange, nrow):
+        print("T")
+        
+
+
     def compute_range_skel(self, poly_degree):
+        """
+        This method computes the range skeleton of the wavepad image.
+
+        Parameters:
+            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
+
+        The method first finds the ranges in the wavepad image using the specified polynomial degree.
+        It overlays the real range skeleton image on the RGB ortho photo and saves this image.
+        Finally, it prints a message indicating that the range skeletonization QC has been saved.
+        """
         real_range_output, self.range_skel = self.filtered_wavepad.find_ranges(poly_degree)
         name = 'Real_Range_Skel.jpg'
         real_range_output = flatten_mask_overlay(self.rgb_ortho, real_range_output)
@@ -267,6 +333,17 @@ class ortho_photo:
         print("Saved Range Skeletonization QC")
 
     def compute_col_skel(self, poly_degree):
+        """
+        This method computes the column skeleton of the wavepad image.
+
+        Parameters:
+            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
+
+        The method first finds the columns in the wavepad image using the specified polynomial degree.
+        It then imputes missing columns in the column skeleton image.
+        It overlays the real and imputed column skeleton images on the RGB ortho photo and saves these images.
+        Finally, it prints a message indicating that the column skeletonization QC has been saved.
+        """
         real_col_output = self.filtered_wavepad.find_columns(poly_degree)
         imputed_col_output, self.col_skel = self.filtered_wavepad.imput_col_skel()
         name = 'Real_Column_Skel.jpg'
@@ -279,21 +356,27 @@ class ortho_photo:
 
    
     
-     
-    def phase2(self, FreqFilterWidth, wave_pixel_expand, ncore = None):
-        print(f"Using {ncore} cores to process fine grid")
-        with multiprocessing.Pool(processes=ncore) as pool:
-            rawwavepad = pool.map(
-                compute_phase2_fun,
-                [(FreqFilterWidth, self.row_mask, self.range_mask, wave_pixel_expand, self.point_grid[e], self.g_ortho, self.boxradius) for e in range(self.num_points)])
-
-        self.rawwavepad = np.array(rawwavepad).reshape(-1,2)
-        self.rawwavepad[:,0] = 1 - bindvec(self.rawwavepad[:,0])
-        self.rawwavepad[:,1] = 1 - bindvec(self.rawwavepad[:,1])
-        self.rawwavepad = (self.rawwavepad * 255).astype(np.uint8)
-
-
 def compute_phase2_fun(args):
+    """
+    This function computes the phase 2 of the wavepad creation process for a given set of arguments.
+
+    Parameters:
+        args (tuple): A tuple containing the following parameters:
+            - FreqFilterWidth (int): The width of the frequency filter.
+            - row_mask (ndarray): The row mask.
+            - range_mask (ndarray): The range mask.
+            - num_pixles (int): The number of pixels to be used in the calculation of the pixel value.
+            - center (tuple): The center of the sub image.
+            - image (ndarray): The ortho photo.
+            - boxradius (int): The radius of the box.
+
+    Returns:
+        tuple: A tuple containing the raw wavepad for the row and range masks.
+
+    The function first extracts the sub image from the ortho photo using the specified box radius and center.
+    It then computes the phase 2 of the wavepad creation process for the row and range masks, passing in the frequency filter width and number of pixels to expand the wavepad by.
+    Finally, it returns a tuple containing the raw wavepad for the row and range masks.
+    """
     FreqFilterWidth, row_mask, range_mask, num_pixles, center, image, boxradius = args
     raw_wavepad = np.zeros(2)
     subI = sub_image(image, boxradius, center)

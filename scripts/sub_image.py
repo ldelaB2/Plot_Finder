@@ -54,7 +54,7 @@ class sub_image:
 
         Parameters:
             FreqFilterWidth (int): The width of the frequency filter to be used.
-            direction (int): The direction of the processing. 0 for rows, 1 for columns.
+            direction (int): The direction of the processing. 0 for rows, 1 for ranges.
             mask (ndarray): The mask to be used in the frequency filtering.
             num_pixels (int): The number of pixels to be used in the calculation of the pixel value.
 
@@ -84,14 +84,14 @@ class sub_image:
             DispOutput (bool, optional): If True, it will display the output graphs.
 
         Attributes Modified:
-            self.axis: The direction of the processing. Set to 0 for rows and 1 for columns.
+            self.axis: The direction of the processing. Set to 0 for rows and 1 for ranges.
 
         Returns:
             row_wave (ndarray): The frequency wave for the rows.
             range_wave (ndarray): The frequency wave for the columns.
 
         It first sets the direction of the processing to rows, computes the FFT of the sub-image, filters the FFT, generates the frequency wave, and stores the absolute value of the frequency wave.
-        Then, it sets the direction of the processing to columns and repeats the same steps.
+        Then, it sets the direction of the processing to ranges and repeats the same steps.
         If DispOutput is True, it displays the sub-image, the FFT, the mask, and the frequency wave after each set of steps.
         """
          

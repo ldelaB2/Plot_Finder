@@ -144,6 +144,7 @@ def build_rectangles(range_skel, col_skel):
     col_bool = col_skel.astype(bool)
     cp = set(map(tuple, np.argwhere(col_bool & range_bool)))
     rect_list = []
+    range_cnt = 0
 
     for e in range(1, num_ranges - 1):
         top_indx = set(map(tuple, np.argwhere(ld_range == e)))
@@ -152,7 +153,7 @@ def build_rectangles(range_skel, col_skel):
         bottom_points = np.array(list(cp.intersection(bottom_indx)))
         top_points = top_points[np.argsort(top_points[:,1])]
         bottom_points = bottom_points[np.argsort(bottom_points[:,1])]
-
+        row_cnt = 0
         for k in range(top_points.shape[0] - 1):
             top_left = top_points[k,:]
             top_right = top_points[k + 1,:]
@@ -160,9 +161,13 @@ def build_rectangles(range_skel, col_skel):
             bottom_right = bottom_points[k + 1,:]
             points = [top_left, top_right, bottom_left, bottom_right]
             rect = four_2_five_rect(points)
+            position = [range_cnt, row_cnt]
+            rect = rect + (position,)
             rect_list.append(rect)
+            row_cnt += 1
+        range_cnt += 1
     
-    return rect_list
+    return rect_list, range_cnt, row_cnt
         
 
 def create_phase2_mask( signal, numfreq, radius=None, supressor=None, disp=False):

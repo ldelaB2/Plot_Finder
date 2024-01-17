@@ -63,10 +63,15 @@ def main():
         # --------------------------Processing Wave Pad ------------------------------------
         # Creating wavepad object
         current_photo.build_wavepad(disp = False)
-        # Finding plots
+        # Finding training plots
         poly_degree_range = 3
-        poly_degree_col = 1
-        current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_range, poly_degree_col = poly_degree_col)
+        poly_degree_row = 1
+        current_photo.find_train_plots(ncore = num_cores, poly_degree_range = poly_degree_range, poly_degree_col = poly_degree_row)
+        
+        # Finding edge plots missed by FFT
+        nrows = 96
+        nranges = 6
+        current_photo.find_all_plots(ncore = num_cores, nrange = nranges, nrow = nrows)
 
         #Reporting memory and time usage
         current_mem, peak_mem = tracemalloc.get_traced_memory()

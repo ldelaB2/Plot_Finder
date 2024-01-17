@@ -2,27 +2,58 @@ from operator import itemgetter
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
 from functions import  bindvec
 
 class rectangle:
+    def __init__(self, rect):
+        self.center = rect[0]
+        self.width = rect[1]
+        self.height = rect[2]
+        self.theta = rect[3]
+        self.points = None
+        self.range = rect[4][0]
+        self.row = rect[4][1]
+        self.ID = str(self.range) + str(self.row)
+
+
+
+class rectangle_list:
     def __init__(self, rect_list):
         self.rect_list = rect_list
         self.compute_stats()
+        
+        for e, rect in enumerate(self.rect_list):
+            rect = rectangle(rect)
+            self.compute_points(rect)
+            self.rect_list[e] = rect
 
     
+    def compute_stats(self):
+        width = np.array(list(map(itemgetter(1), self.rect_list)))
+        height = np.array(list(map(itemgetter(2), self.rect_list)))
+        self.mean_width = np.mean(width).astype(int)
+        self.mean_height = np.mean(height).astype(int)
+        self.create_unit_square()  
+
+
     def create_unit_square(self):
-        unit_width = self.mean_width*2 + 1
-        unit_height = self.mean_height*2 + 1
+        self.unit_width = self.mean_width*2 + 1
+        self.unit_height = self.mean_height*2 + 1
         # Creating the unit square
-        y = np.linspace(-1, 1, unit_height)
-        x = np.linspace(-1, 1, unit_width)
+        y = np.linspace(-1, 1, self.unit_height)
+        x = np.linspace(-1, 1, self.unit_width)
         X, Y = np.meshgrid(x, y)
         unit_sqr = np.column_stack((X.ravel(), Y.ravel(), np.ones_like(X.ravel())))
         self.unit_sqr = unit_sqr
 
+    
     def create_affine_frame(self, rect):
-        center, width, height, theta = rect
+        center = rect.center
+        width = rect.width
+        height = rect.height
+        theta = rect.theta
 
         # Translation Matrix
         t_mat = np.zeros((3, 3))
@@ -41,12 +72,15 @@ class rectangle:
 
         affine_mat = t_mat @ r_mat @ s_mat
         return affine_mat
-
-    def extract_rectangle(self, rect, img):
+    
+    def compute_points(self, rect):
         affine_mat = self.create_affine_frame(rect)
         rotated_points = np.dot(affine_mat, self.unit_sqr.T).T
         rotated_points = rotated_points.astype(int)
-        
+        rect.points = rotated_points[:,:2]
+
+    def extract_rectangle(self, rect, img):
+        rotated_points = rect.points
         z = img.shape
         if len(z) > 2:
             extracted_img = img[rotated_points[:, 1], rotated_points[:, 0], :]
@@ -57,7 +91,25 @@ class rectangle:
             
         return extracted_img
         
-    
+    def optomize_placement(self, img):
+        test = self.extract_rectangle(self.rect_list[0], img)
+        print("T")
+
+    def disp_rectangles(self, img):
+        fig, ax = plt.subplots(1)
+        ax.imshow(img)
+
+        for rect in self.rect_list:
+            center_x, center_y, width, height = rect.center[1], rect.center[0], rect.width, rect.height
+            bottom_left_x = center_x - width
+            bottom_left_y = center_y - height
+            width = 2 * width + 1
+            height = 2 * height + 1
+            rect_path = patches.Rectangle((bottom_left_x,bottom_left_y),width,height,linewidth=1,edgecolor='r',facecolor='none')
+            ax.add_patch(rect_path)
+
+        plt.show()
+
     def compute_fft_score(self, img):
         def compute_fft_score(img):
             sig = np.sum(img, axis = 0)
@@ -87,16 +139,9 @@ class rectangle:
         self.histograms = scores
             
     
-    def compute_stats(self):
-        width = np.array(list(map(itemgetter(1), self.rect_list)))
-        height = np.array(list(map(itemgetter(2), self.rect_list)))
-        self.mean_width = np.mean(width).astype(int)
-        self.mean_height = np.mean(height).astype(int)
-        self.create_unit_square()
     
-    def optomize_placement(self, img):
-        self.compute_histogram_score(img)
-        sum_img = self.extract_rectangle(rect, img)
+    
+    
 
 
     def impute_rows(self, nrow, col_skel):

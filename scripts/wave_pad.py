@@ -40,7 +40,7 @@ class wavepad:
         It finds the connected components in the filtered image and draws a center line through each component by fitting a polynomial to the mean 'y' values for each 'x'.
         Finally, it dilates the skeleton image and returns the dilated image and the original skeleton image.
         """
-        
+
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
         tmp = cv.morphologyEx(self.range_wavepad_binary, cv.MORPH_CLOSE, kernel)
@@ -170,7 +170,7 @@ class wavepad:
         num_obj, obj_labeled_img, img_stats, _ = cv.connectedComponentsWithStats(obj_filtered_wavepad)
 
         # Looping through all objects to draw center line
-        print(f"Using {self.ncore} cores to find center lines")
+        print("Finding center lines")
         with multiprocessing.Pool(processes=self.ncore) as pool:
             centerlines = pool.map(
                 find_center_line, [(obj_labeled_img, indx, poly_degree, obj_labeled_img.shape[0]) for indx in range(1,num_obj)]
