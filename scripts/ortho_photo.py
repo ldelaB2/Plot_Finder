@@ -305,9 +305,9 @@ class ortho_photo:
 
     def compute_train_plots(self):
         starting_rect, range_cnt, row_cnt = build_rectangles(self.range_skel, self.col_skel)
-        train_rect = rectangle_list(starting_rect)
-        train_rect.disp_rectangles(self.rgb_ortho)
-        train_rect.optomize_placement(self.rgb_ortho)
+        train_rect = rectangle_list(starting_rect, self.rgb_ortho)
+        #train_rect.disp_rectangles(self.rgb_ortho)
+        train_rect.optomize_placement()
         
         
     def find_all_plots(self, ncore, nrange, nrow):

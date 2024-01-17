@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
 from functions import  bindvec
+from scipy.optomize import minimize
 
 class rectangle:
     def __init__(self, rect):
@@ -15,18 +16,23 @@ class rectangle:
         self.points = None
         self.range = rect[4][0]
         self.row = rect[4][1]
-        self.ID = str(self.range) + str(self.row)
-
+        self.red_histogram = None
+        self.green_histogram = None
+        self.blue_histogram = None
+        self.hist_score = None
+        self.fft_score = None
 
 
 class rectangle_list:
-    def __init__(self, rect_list):
+    def __init__(self, rect_list, rgb_img):
         self.rect_list = rect_list
         self.compute_stats()
+        self.rgb_img = rgb_img
         
         for e, rect in enumerate(self.rect_list):
             rect = rectangle(rect)
             self.compute_points(rect)
+            self.compute_histogram(rect)
             self.rect_list[e] = rect
 
     
@@ -49,11 +55,9 @@ class rectangle_list:
         self.unit_sqr = unit_sqr
 
     
-    def create_affine_frame(self, rect):
-        center = rect.center
-        width = rect.width
-        height = rect.height
-        theta = rect.theta
+    def create_affine_frame(self, center, theta):
+        width = self.unit_width
+        height = self.unit_height
 
         # Translation Matrix
         t_mat = np.zeros((3, 3))
@@ -74,13 +78,42 @@ class rectangle_list:
         return affine_mat
     
     def compute_points(self, rect):
-        affine_mat = self.create_affine_frame(rect)
+        affine_mat = self.create_affine_frame(rect.center, rect.theta)
         rotated_points = np.dot(affine_mat, self.unit_sqr.T).T
         rotated_points = rotated_points.astype(int)
         rect.points = rotated_points[:,:2]
 
-    def extract_rectangle(self, rect, img):
+    def compute_histogram(self, rect):
+        sub_image = self.extract_rectangle(rect)
+
+        # Compute the histogram for each channel
+        red_histogram = np.histogram(sub_image[:,:,0], bins=256, range=(0, 256))
+        green_histogram = np.histogram(sub_image[:,:,1], bins=256, range=(0, 256))
+        blue_histogram = np.histogram(sub_image[:,:,2], bins=256, range=(0, 256))
+
+        rect.red_histogram = red_histogram
+        rect.green_histogram = green_histogram
+        rect.blue_histogram = blue_histogram
+
+    def disp_histogram(self, rect):
+        red_histogram = rect.red_histogram
+        green_histogram = rect.green_histogram
+        blue_histogram = rect.blue_histogram
+
+        # Plot the histogram
+        plt.figure(figsize=(10,6))
+        plt.plot(red_histogram[1][:-1], red_histogram[0], color='red')
+        plt.plot(green_histogram[1][:-1], green_histogram[0], color='green')
+        plt.plot(blue_histogram[1][:-1], blue_histogram[0], color='blue')
+        plt.title("RGB Histogram")
+        plt.xlabel("Pixel Value")
+        plt.ylabel("Frequency")
+        plt.show()
+
+
+    def extract_rectangle(self, rect):
         rotated_points = rect.points
+        img  = self.rgb_img
         z = img.shape
         if len(z) > 2:
             extracted_img = img[rotated_points[:, 1], rotated_points[:, 0], :]
@@ -91,9 +124,69 @@ class rectangle_list:
             
         return extracted_img
         
-    def optomize_placement(self, img):
-        test = self.extract_rectangle(self.rect_list[0], img)
-        print("T")
+    def optomize_placement(self):
+        normalized_hist_dist = np.zeros((len(self.rect_list), len(self.rect_list)))
+        for e in range(len(self.rect_list)):
+            for f in range(len(self.rect_list)):
+                normalized_hist_dist[e,f] = self.compute_hist_dist(self.rect_list[e], self.rect_list[f])
+
+        normalized_dist_sum = np.sum(normalized_hist_dist, axis = 0)
+        normalized_mean = np.mean(normalized_dist_sum).astype(int)
+        train_set = np.argwhere(normalized_dist_sum <= normalized_mean)
+        bad_set = np.argwhere(normalized_dist_sum > normalized_mean)
+        self.comptue_train_matrix(train_set)
+
+        for indx in bad_set:
+            self.compute_hist_score(self.rect_list[indx[0]])
+        
+
+
+        plt.plot(normalized_dist_sum)
+        plt.axhline(y = normalized_mean, color = 'r')
+            
+    def error_function(self, new_rect, starting_score):
+        self.compute_points(new_rect)
+        self.compute_histogram(new_rect)
+        self.compute_hist_score(new_rect)
+        new_score = new_rect.hist_score
+        error = new_score - starting_score
+        return error
+
+    def compute_hist_score(self, rect):
+        tmp_mat = np.zeros_like(self.train_matrix)
+        tmp_mat[:,:,0] = rect.red_histogram[0]
+        tmp_mat[:,:,1] = rect.blue_histogram[0]
+        tmp_mat[:,:,2] = rect.green_histogram[0]
+        raw_dist = tmp_mat - self.train_matrix
+        dist = np.linalg.norm(raw_dist).astype(int)
+        rect.hist_score = dist
+
+    def comptue_train_matrix(self, train_set):
+        train_matrix = np.zeros((train_set.size, 256, 3))
+        for indx, rect_indx in enumerate(train_set):
+            rect = self.rect_list[rect_indx[0]]
+            train_matrix[indx,:,0] = rect.red_histogram[0]
+            train_matrix[indx,:,1] = rect.blue_histogram[0]
+            train_matrix[indx,:,2] = rect.green_histogram[0]
+        
+        self.train_matrix = train_matrix
+        
+    def compute_hist_dist(self, rect1, rect2):
+        red_hist1 = rect1.red_histogram[0]
+        green_hist1 = rect1.green_histogram[0]
+        blue_hist1 = rect1.blue_histogram[0]
+        
+        red_hist2 = rect2.red_histogram[0]
+        green_hist2 = rect2.green_histogram[0]
+        blue_hist2 = rect2.blue_histogram[0]
+        
+        red_dist = np.linalg.norm(red_hist1 - red_hist2)
+        green_dist = np.linalg.norm(green_hist1 - green_hist2)
+        blue_dist = np.linalg.norm(blue_hist1 - blue_hist2)
+        
+        normalized_hist_dist = ((red_dist + green_dist + blue_dist) / 3).astype(int)
+        
+        return normalized_hist_dist
 
     def disp_rectangles(self, img):
         fig, ax = plt.subplots(1)
@@ -124,55 +217,8 @@ class rectangle_list:
             scores[e,:] = fsig
 
         self.fft_scores = scores
+ 
 
-    def compute_histogram_score(self, img):
-
-        def compute_histogram(img):
-            print("T")
-
-        histogram = np.zeros((len(self.rect_list), self.mean_width*2 + 1))
-        for e,rect in enumerate(self.rect_list):
-            sub_img = self.extract_rectangle(rect, img)
-            fsig = self.compute_fft_score(sub_img)
-            scores[e,:] = fsig
-
-        self.histograms = scores
-            
-    
-    
-    
-    
-
-
-    def impute_rows(self, nrow, col_skel):
-        self.compute_stats()
-        self.create_unit_square()
-        self.compute_train_set()
-
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
-        dialated_skel = cv.dilate(col_skel, kernel)
-        num_col, labeled_skel, _, _ = cv.connectedComponentsWithStats(dialated_skel.T)
-        num_ranges = num_col - 1
-        
-        if num_ranges == nrow:
-            print("No rows to impute")
-            return
-        elif num_ranges > nrow:
-            print("To many rows found attempting to remove")
-            return
-        else:
-            rows_to_impute = nrow - num_ranges
-            tmp = np.copy(col_skel.T)
-            indx = np.argwhere(tmp != 0)
-            tmp[indx[:, 0], indx[:, 1]] = labeled_skel[indx[:, 0], indx[:, 1]]
-            top_row = np.argwhere(tmp == 1)
-            bottom_row = np.argwhere(tmp == num_ranges)
-            cnt = 1
-            
-            while rows_to_impute >= cnt:
-                top_extend = np.copy(top_row)
-                top_extend[:,0]  = top_extend[:,0] - (2*self.mean_width + 1)
-                
                 
                
                 
