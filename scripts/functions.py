@@ -131,11 +131,11 @@ def build_rectangles(range_skel, col_skel):
         w2 = np.linalg.norm(bottom_left - bottom_right)
         h1 = np.linalg.norm(top_left - bottom_left)
         h2 = np.linalg.norm(top_right - bottom_right)
-        width = ((w1 + w2)/4).astype(int)
-        height = ((h1 + h2)/4).astype(int)
+        width = ((w1 + w2)/2).astype(int)
+        height = ((h1 + h2)/2).astype(int)
         center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
-        rect = (center, width, height, 0)
-        return rect
+        rect = (center, 0)
+        return rect, width, height
 
 
     num_ranges, ld_range, _, _ = dialated_labeled_skel(range_skel)
@@ -145,6 +145,9 @@ def build_rectangles(range_skel, col_skel):
     cp = set(map(tuple, np.argwhere(col_bool & range_bool)))
     rect_list = []
     range_cnt = 0
+    rect_cnt = 0
+    mean_width = 0
+    mean_height = 0
 
     for e in range(1, num_ranges - 1):
         top_indx = set(map(tuple, np.argwhere(ld_range == e)))
@@ -160,15 +163,34 @@ def build_rectangles(range_skel, col_skel):
             bottom_left = bottom_points[k,:]
             bottom_right = bottom_points[k + 1,:]
             points = [top_left, top_right, bottom_left, bottom_right]
-            rect = four_2_five_rect(points)
+            rect, t_width, t_height = four_2_five_rect(points)
+            mean_width += t_width
+            mean_height += t_height
             position = [range_cnt, row_cnt]
             rect = rect + (position,)
             rect_list.append(rect)
             row_cnt += 1
+            rect_cnt += 1
+
         range_cnt += 1
+
+    mean_width = (mean_width / rect_cnt).astype(int)
+    mean_height = (mean_height / rect_cnt).astype(int)
     
-    return rect_list, range_cnt, row_cnt
+    return rect_list, range_cnt, row_cnt, mean_width, mean_height
         
+def compute_fft_distance(test_set, train_set):
+    total_dist = 0
+    for e in range(test_set.shape[0]):
+        temp_mat = np.zeros_like(train_set)
+        temp_mat[:,:] = test_set[e,:]
+        raw_dist = temp_mat - train_set
+        dist = np.linalg.norm(raw_dist)
+        total_dist += dist
+    
+    return total_dist
+
+
 
 def create_phase2_mask( signal, numfreq, radius=None, supressor=None, disp=False):
     """
@@ -308,7 +330,11 @@ def bindvec(in_array):
     """
     z = in_array.shape
     in_array = in_array.ravel() - np.min(in_array)
-    out = in_array * (1.0 / np.max(in_array))
+    max_val = np.max(in_array)
+    if max_val == 0:
+        out = in_array
+    else:
+        out = in_array * (1.0 / max_val)
     out = out.reshape(z)
     return out
 

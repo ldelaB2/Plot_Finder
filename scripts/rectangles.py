@@ -5,48 +5,36 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
 from functions import  bindvec
-from scipy.optomize import minimize
+from scipy.optimize import minimize
 
 class rectangle:
     def __init__(self, rect):
         self.center = rect[0]
-        self.width = rect[1]
-        self.height = rect[2]
-        self.theta = rect[3]
+        self.theta = rect[1]
+        self.range = rect[2][0]
+        self.row = rect[2][1]
         self.points = None
-        self.range = rect[4][0]
-        self.row = rect[4][1]
         self.red_histogram = None
         self.green_histogram = None
         self.blue_histogram = None
-        self.hist_score = None
-        self.fft_score = None
-
+        
 
 class rectangle_list:
-    def __init__(self, rect_list, rgb_img):
+    def __init__(self, rect_list, mean_width, mean_height, img):
         self.rect_list = rect_list
-        self.compute_stats()
-        self.rgb_img = rgb_img
+        self.img = img
+        self.mean_width = mean_width
+        self.mean_height = mean_height
+        self.create_unit_square()
         
         for e, rect in enumerate(self.rect_list):
             rect = rectangle(rect)
-            self.compute_points(rect)
-            self.compute_histogram(rect)
             self.rect_list[e] = rect
-
-    
-    def compute_stats(self):
-        width = np.array(list(map(itemgetter(1), self.rect_list)))
-        height = np.array(list(map(itemgetter(2), self.rect_list)))
-        self.mean_width = np.mean(width).astype(int)
-        self.mean_height = np.mean(height).astype(int)
-        self.create_unit_square()  
 
 
     def create_unit_square(self):
-        self.unit_width = self.mean_width*2 + 1
-        self.unit_height = self.mean_height*2 + 1
+        self.unit_width = self.mean_width
+        self.unit_height = self.mean_height
         # Creating the unit square
         y = np.linspace(-1, 1, self.unit_height)
         x = np.linspace(-1, 1, self.unit_width)
@@ -55,9 +43,11 @@ class rectangle_list:
         self.unit_sqr = unit_sqr
 
     
-    def create_affine_frame(self, center, theta):
-        width = self.unit_width
-        height = self.unit_height
+    def create_affine_frame(self, rect):
+        width = (self.unit_width / 2).astype(int)
+        height = (self.unit_height / 2).astype(int)
+        center = rect.center
+        theta = rect.theta
 
         # Translation Matrix
         t_mat = np.zeros((3, 3))
@@ -78,10 +68,19 @@ class rectangle_list:
         return affine_mat
     
     def compute_points(self, rect):
-        affine_mat = self.create_affine_frame(rect.center, rect.theta)
+        affine_mat = self.create_affine_frame(rect)
         rotated_points = np.dot(affine_mat, self.unit_sqr.T).T
-        rotated_points = rotated_points.astype(int)
-        rect.points = rotated_points[:,:2]
+        rotated_points = rotated_points[:,:2].astype(int)
+
+        # Checking to make sure points are within the image
+        img_height, img_width = self.img.shape[:2]
+        valid_y = (rotated_points[:, 1] >= 0) & (rotated_points[:, 1] < img_height)
+        valid_x = (rotated_points[:, 0] >= 0) & (rotated_points[:, 0] < img_width)
+        invalid_points = (~(valid_x & valid_y))
+        rotated_points[invalid_points, :] = [0,0]
+
+        rect.points = rotated_points
+        
 
     def compute_histogram(self, rect):
         sub_image = self.extract_rectangle(rect)
@@ -112,8 +111,11 @@ class rectangle_list:
 
 
     def extract_rectangle(self, rect):
+        if rect.points is None:
+            self.compute_points(rect)
+
         rotated_points = rect.points
-        img  = self.rgb_img
+        img  = self.img
         z = img.shape
         if len(z) > 2:
             extracted_img = img[rotated_points[:, 1], rotated_points[:, 0], :]
@@ -136,20 +138,30 @@ class rectangle_list:
         bad_set = np.argwhere(normalized_dist_sum > normalized_mean)
         self.comptue_train_matrix(train_set)
 
+        center_radi = 50
+        theta_radi = 10
+
         for indx in bad_set:
             self.compute_hist_score(self.rect_list[indx[0]])
+            new_rect = self.rect_list[indx[0]]
+            x0 = np.array([new_rect.center[0], new_rect.center[1], new_rect.theta])
+            test = minimize(self.error_function, x0)
+            print("T")
         
 
 
         plt.plot(normalized_dist_sum)
         plt.axhline(y = normalized_mean, color = 'r')
             
-    def error_function(self, new_rect, starting_score):
-        self.compute_points(new_rect)
-        self.compute_histogram(new_rect)
-        self.compute_hist_score(new_rect)
-        new_score = new_rect.hist_score
-        error = new_score - starting_score
+    def error_function(self, x):
+        center, theta = x[:2], x[2]
+        rect = rectangle()
+        rect.center = center
+        rect.theta = theta
+        self.compute_points(rect)
+        self.compute_histogram(rect)
+        self.compute_hist_score(rect)
+        error = rect.hist_score
         return error
 
     def compute_hist_score(self, rect):
@@ -158,7 +170,7 @@ class rectangle_list:
         tmp_mat[:,:,1] = rect.blue_histogram[0]
         tmp_mat[:,:,2] = rect.green_histogram[0]
         raw_dist = tmp_mat - self.train_matrix
-        dist = np.linalg.norm(raw_dist).astype(int)
+        dist = np.linalg.norm(raw_dist)
         rect.hist_score = dist
 
     def comptue_train_matrix(self, train_set):
@@ -188,35 +200,38 @@ class rectangle_list:
         
         return normalized_hist_dist
 
-    def disp_rectangles(self, img):
+    def disp_rectangles(self):
         fig, ax = plt.subplots(1)
-        ax.imshow(img)
+        ax.imshow(self.img)
 
         for rect in self.rect_list:
-            center_x, center_y, width, height = rect.center[1], rect.center[0], rect.width, rect.height
+            width = (self.mean_width / 2).astype(int)
+            height = (self.mean_height / 2).astype(int)
+            center_x, center_y, = rect.center[1], rect.center[0]
             bottom_left_x = center_x - width
             bottom_left_y = center_y - height
-            width = 2 * width + 1
-            height = 2 * height + 1
-            rect_path = patches.Rectangle((bottom_left_x,bottom_left_y),width,height,linewidth=1,edgecolor='r',facecolor='none')
+            rect_path = patches.Rectangle((bottom_left_x,bottom_left_y),self.mean_width,self.mean_height,linewidth=1,edgecolor='r',facecolor='none')
             ax.add_patch(rect_path)
 
         plt.show()
 
-    def compute_fft_score(self, img):
+    def compute_fft_score(self):
         def compute_fft_score(img):
             sig = np.sum(img, axis = 0)
             fsig = fftshift(fft(sig - np.mean(sig)))
             amp = bindvec(abs(fsig))
             return amp
 
-        scores = np.zeros((len(self.rect_list), self.mean_width*2 + 1))
+        scores = np.zeros((len(self.rect_list), self.mean_width))
         for e,rect in enumerate(self.rect_list):
-            sub_img = self.extract_rectangle(rect, img)
+            sub_img = self.extract_rectangle(rect)
             fsig = compute_fft_score(sub_img)
             scores[e,:] = fsig
 
-        self.fft_scores = scores
+        return scores
+    
+    def add_rectangles(self, new_rect_list):
+        self.rect_list = self.rect_list + new_rect_list
  
 
                 

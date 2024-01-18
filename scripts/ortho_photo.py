@@ -1,4 +1,4 @@
-import os, multiprocessing
+import os, multiprocessing, copy
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -285,7 +285,7 @@ class ortho_photo:
             plt.imshow(range_filtered_disp)
             plt.show()
 
-    def find_train_plots(self, ncore, poly_degree_range, poly_degree_col):
+    def find_train_plots(self, ncore, poly_degree_range, poly_degree_col, nrange, nrow):
         """
         This method finds the plots in the wavepad image.
 
@@ -301,18 +301,92 @@ class ortho_photo:
         self.filtered_wavepad = wavepad(self.row_wavepad_binary, self.range_wavepad_binary, self.QC_path, ncore)
         self.compute_col_skel(poly_degree_col)
         self.compute_range_skel(poly_degree_range)
-        self.compute_train_plots()
+        
+        starting_rect, range_cnt, row_cnt, mean_width, mean_height = build_rectangles(self.range_skel, self.col_skel)
+        rows_2_find = nrow - row_cnt
+        ranges_2_find = nrange - range_cnt
 
-    def compute_train_plots(self):
-        starting_rect, range_cnt, row_cnt = build_rectangles(self.range_skel, self.col_skel)
-        train_rect = rectangle_list(starting_rect, self.rgb_ortho)
-        #train_rect.disp_rectangles(self.rgb_ortho)
-        train_rect.optomize_placement()
+        if rows_2_find > 0 or ranges_2_find > 0:
+            self.impute_rectangles(starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height)
+        elif rows_2_find < 0 or ranges_2_find < 0:
+            self.remove_rectangles(starting_rect, rows_2_find, ranges_2_find)
+        else:
+            print("No Rectangles to Impute or Remove")
+
+
+    def impute_rectangles(self, starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height):
+        train_rect = rectangle_list(starting_rect, mean_width, mean_height, self.g_ortho)
+        train_fft_scores = train_rect.compute_fft_score()
+
+        # Finding missing ranges
+        while ranges_2_find > 0:
+            ranges = [rect.range for rect in train_rect.rect_list]
+            max_range = np.max(ranges)
+            min_range = np.min(ranges)
+
+            top_rect = np.argwhere(ranges == min_range)
+            bottom_rect = np.argwhere(ranges == max_range)
+            temp_top_list = []
+            temp_bottom_list = []
+            for e in range(len(top_rect)):
+                top_center = train_rect.rect_list[top_rect[e,0]].center.copy()
+                bottom_center = train_rect.rect_list[bottom_rect[e,0]].center.copy()
+                top_center[0] = top_center[0] - mean_height
+                bottom_center[0] = bottom_center[0] + mean_height
+
+                temp_top_list.append((top_center, 0,[min_range - 1, e]))
+                temp_bottom_list.append((bottom_center, 0, [max_range + 1, e]))
+
+            top_rect = rectangle_list(temp_top_list, mean_width, mean_height, self.g_ortho)
+            bottom_rect = rectangle_list(temp_bottom_list, mean_width, mean_height, self.g_ortho)
+            top_fft_scores = top_rect.compute_fft_score()
+            bottom_fft_scores = bottom_rect.compute_fft_score()
+
+            top_dist = compute_fft_distance(top_fft_scores, train_fft_scores)
+            bottom_dist = compute_fft_distance(bottom_fft_scores, train_fft_scores)
+
+            if top_dist < bottom_dist:
+                train_rect.add_rectangles(top_rect.rect_list)
+            else:
+                train_rect.add_rectangles(bottom_rect.rect_list)
+            
+            ranges_2_find -= 1
         
-        
-    def find_all_plots(self, ncore, nrange, nrow):
-        print("T")
-        
+        # Finding missing rows
+        while rows_2_find > 0:
+            rows = [rect.row for rect in train_rect.rect_list]
+            max_row = np.max(rows)
+            min_row = np.min(rows)
+
+            left_rect = np.argwhere(rows == min_row)
+            right_rect = np.argwhere(rows == max_row)
+            temp_left_list = []
+            temp_right_list = []
+            for e in range(len(left_rect)):
+                left_center = train_rect.rect_list[left_rect[e,0]].center.copy()
+                right_center = train_rect.rect_list[right_rect[e,0]].center.copy()
+                left_center[1] = left_center[1] - mean_width
+                right_center[1] = right_center[1] + mean_width
+
+                temp_left_list.append((left_center, 0,[e, min_row - 1]))
+                temp_right_list.append((right_center, 0, [e, max_row + 1]))
+            
+            left_rect = rectangle_list(temp_left_list, mean_width, mean_height, self.g_ortho)
+            right_rect = rectangle_list(temp_right_list, mean_width, mean_height, self.g_ortho)
+            left_fft_scores = left_rect.compute_fft_score()
+            right_fft_scores = right_rect.compute_fft_score()
+
+            left_dist = compute_fft_distance(left_fft_scores, train_fft_scores)
+            right_dist = compute_fft_distance(right_fft_scores, train_fft_scores)
+
+            if left_dist < right_dist:
+                train_rect.add_rectangles(left_rect.rect_list)
+            else:
+                train_rect.add_rectangles(right_rect.rect_list)
+
+            rows_2_find -= 1
+
+        self.final_rect_list = train_rect
 
 
     def compute_range_skel(self, poly_degree):
