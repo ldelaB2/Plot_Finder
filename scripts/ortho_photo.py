@@ -285,7 +285,7 @@ class ortho_photo:
             plt.imshow(range_filtered_disp)
             plt.show()
 
-    def find_train_plots(self, ncore, poly_degree_range, poly_degree_col, nrange, nrow):
+    def find_plots(self, ncore, poly_degree_range, poly_degree_col, nrange, nrow):
         """
         This method finds the plots in the wavepad image.
 
@@ -312,6 +312,16 @@ class ortho_photo:
             self.remove_rectangles(starting_rect, rows_2_find, ranges_2_find)
         else:
             print("No Rectangles to Impute or Remove")
+            self.final_rect_list = starting_rect
+
+        self.final_rect_list.img = self.rgb_ortho
+        
+
+
+    def optomize_plots(self, miter, tol, method):
+        self.final_rect_list.compute_model()
+        
+
 
 
     def impute_rectangles(self, starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height):
@@ -387,6 +397,7 @@ class ortho_photo:
             rows_2_find -= 1
 
         self.final_rect_list = train_rect
+        print("Finished Imputing Edge Rectangles")
 
 
     def compute_range_skel(self, poly_degree):

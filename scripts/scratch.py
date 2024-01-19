@@ -331,3 +331,82 @@ def eludian_distance(target, points, return_points=False):
         return points
     else:
         return dist
+    
+
+
+def optomize_placement(self):
+        normalized_hist_dist = np.zeros((len(self.rect_list), len(self.rect_list)))
+        for e in range(len(self.rect_list)):
+            for f in range(len(self.rect_list)):
+                normalized_hist_dist[e,f] = self.compute_hist_dist(self.rect_list[e], self.rect_list[f])
+
+        normalized_dist_sum = np.sum(normalized_hist_dist, axis = 0)
+        normalized_mean = np.mean(normalized_dist_sum).astype(int)
+        train_set = np.argwhere(normalized_dist_sum <= normalized_mean)
+        bad_set = np.argwhere(normalized_dist_sum > normalized_mean)
+        self.comptue_train_matrix(train_set)
+
+        center_radi = 20
+        theta_radi = 5
+
+        for indx in bad_set:
+            x0_center = self.rect_list[indx[0]].center.copy()
+            x0_theta = self.rect_list[indx[0]].theta
+            x0 = np.array([x0_center[0], x0_center[1], x0_theta])
+            bounds = Bounds([x0[0] - center_radi, x0[1] - center_radi, x0[2] - theta_radi], [x0[0] + center_radi, x0[1] + center_radi, x0[2] + theta_radi])
+            test = minimize(self.error_function, x0, method='', bounds = bounds)
+            print("T")
+        
+
+        indx = np.arange(len(normalized_dist_sum))
+        plt.scatter(indx, normalized_dist_sum)
+        plt.axhline(y = normalized_mean, color = 'r')
+            
+    def error_function(self, x):
+        center, theta = x[:2], x[2]
+        rect = rectangle((center, theta))
+        self.compute_points(rect)
+        self.compute_histogram(rect)
+        hist_dist = self.compute_hist_score(rect)
+        return hist_dist
+
+    def compute_hist_score(self, rect):
+        tmp_mat = np.zeros_like(self.train_matrix)
+        tmp_mat[:,:,0] = rect.red_histogram[0]
+        tmp_mat[:,:,1] = rect.blue_histogram[0]
+        tmp_mat[:,:,2] = rect.green_histogram[0]
+        raw_dist = tmp_mat - self.train_matrix
+        dist = np.linalg.norm(raw_dist)
+        return dist
+
+    def comptue_train_matrix(self, train_set):
+        train_matrix = np.zeros((train_set.size, 256, 3))
+        for indx, rect_indx in enumerate(train_set):
+            rect = self.rect_list[rect_indx[0]]
+            train_matrix[indx,:,0] = rect.red_histogram[0]
+            train_matrix[indx,:,1] = rect.blue_histogram[0]
+            train_matrix[indx,:,2] = rect.green_histogram[0]
+        
+        self.train_matrix = train_matrix
+        
+    def compute_hist_dist(self, rect1, rect2):
+        if rect1.red_histogram is None:
+            self.compute_histogram(rect1)
+        if rect2.red_histogram is None:
+            self.compute_histogram(rect2)
+
+        red_hist1 = rect1.red_histogram[0]
+        green_hist1 = rect1.green_histogram[0]
+        blue_hist1 = rect1.blue_histogram[0]
+        
+        red_hist2 = rect2.red_histogram[0]
+        green_hist2 = rect2.green_histogram[0]
+        blue_hist2 = rect2.blue_histogram[0]
+        
+        red_dist = np.linalg.norm(red_hist1 - red_hist2)
+        green_dist = np.linalg.norm(green_hist1 - green_hist2)
+        blue_dist = np.linalg.norm(blue_hist1 - blue_hist2)
+        
+        normalized_hist_dist = ((red_dist + green_dist + blue_dist) / 3).astype(int)
+        
+        return normalized_hist_dist

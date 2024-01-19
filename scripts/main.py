@@ -72,6 +72,18 @@ def main():
 
         current_photo.find_plots(ncore = num_cores, poly_degree_range = poly_degree_range, poly_degree_col = poly_degree_row, nrange = nranges, nrow = nrows)
         
+        # Optomizing plot locations
+        miter = 10
+        tol = .01
+        method = "L-BFGS-B"
+        current_photo.optomize_plots(miter, tol, method)
+
+        # Extracting plots and creating geo shape file
+        current_photo.extract_plots()
+        current_photo.create_shapefile()
+
+        print(f"Finished Processing {current_photo.name} \n 
+              Thanks for using PLot Finder! Keep on Keeping on - Squid Billy Willy")
 
         #Reporting memory and time usage
         current_mem, peak_mem = tracemalloc.get_traced_memory()
