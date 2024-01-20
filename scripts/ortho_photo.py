@@ -318,10 +318,14 @@ class ortho_photo:
         
 
 
-    def optomize_plots(self, miter, tol, method):
-        self.final_rect_list.compute_model()
+    def optomize_plots(self, miter, ncore, center_radi, theta_radi):
+        for e in range(miter):
+            print(f"Starting Optomization Iteration {e + 1}")
+            self.final_rect_list.compute_model()
+            self.final_rect_list.optomize_rect_list(ncore, center_radi, theta_radi)
+            self.final_rect_list.disp_rectangles()
         
-
+        print("Finished Optomizing Rectangles")
 
 
     def impute_rectangles(self, starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height):

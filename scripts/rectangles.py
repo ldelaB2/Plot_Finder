@@ -1,11 +1,11 @@
-from operator import itemgetter
 import numpy as np
-import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from numpy.fft import fft, fftshift
 from functions import  bindvec
-from scipy.optimize import minimize, Bounds
+from scipy.optimize import dual_annealing, minimize, Bounds
+import multiprocessing as mp
+from tqdm import tqdm
 
 class rectangle:
     def __init__(self, rect):
@@ -17,6 +17,12 @@ class rectangle:
         self.red_histogram = None
         self.green_histogram = None
         self.blue_histogram = None
+        self.width = None
+        self.height = None
+        self.original_center = rect[0]
+        self.original_theta = rect[1]
+        self.old_center = None
+        self.old_theta = None
         
 
 class rectangle_list:
@@ -29,6 +35,8 @@ class rectangle_list:
         
         for e, rect in enumerate(self.rect_list):
             rect = rectangle(rect)
+            rect.width = mean_width
+            rect.height = mean_height
             self.rect_list[e] = rect
 
 
@@ -151,6 +159,7 @@ class rectangle_list:
             ax.add_patch(rect_path)
 
         plt.show()
+        return fig, ax
 
 
     def compute_fft_score(self):
@@ -172,10 +181,84 @@ class rectangle_list:
         self.rect_list = self.rect_list + new_rect_list
  
 
-                
+    def optomize_rect_list(self, ncore, center_radi, theta_radi):
+        for e in tqdm(range(len(self.rect_list)), desc = "Optomizing Rectangles"):
+            rect = self.rect_list[e]
+            optomize_rectangles((self.img, self.model, rect, center_radi, theta_radi, self.unit_sqr))
+
+        """
+        with mp.Pool(processes=ncore) as pool:
+            _ = pool.map(
+                optomize_rectangles,
+                tqdm([(self.img, self.model, rect, center_radi, theta_radi, self.unit_sqr) for rect in self.rect_list], desc = "Optomizing Rectangles")
+            )
+        """
+
                
-                
-                
-            
+def optomize_rectangles(args):
+    I, model, rect, center_radi, theta_radi, unit_sqr = args
+    # Create objective function
+    def objective_function(x):
+        dX, dY, dTheta = x[0], x[1], x[2]
+
+        center = rect.center.copy()
+        theta = rect.theta
+        center = center + np.array([dX, dY])
+        theta = theta + dTheta
+        sub_img = extract_rectangle(center, theta)
+        dist = np.linalg.norm(sub_img - model)
+        return dist
+
+    # Extract rectangle from image
+    def extract_rectangle(center, theta):
+        points = compute_points(center, theta)
+        sub_img = I[points[:, 1], points[:, 0], :]
+        sub_img = np.reshape(sub_img, (rect.height, rect.width, I.shape[2]))
+        return sub_img
+
+    # Compute the points of rectangle
+    def compute_points(center, theta):
+        affine_mat = compute_affine_frame(center, theta)
+        rotated_points = np.dot(affine_mat, unit_sqr.T).T
+        rotated_points = rotated_points[:,:2].astype(int)
+
+        # Checking to make sure points are within the image
+        img_height, img_width = I.shape[:2]
+        valid_y = (rotated_points[:, 1] >= 0) & (rotated_points[:, 1] < img_height)
+        valid_x = (rotated_points[:, 0] >= 0) & (rotated_points[:, 0] < img_width)
+        invalid_points = (~(valid_x & valid_y))
+        rotated_points[invalid_points, :] = [0,0]
+        return rotated_points
     
-        
+    def compute_affine_frame(center, theta):
+        width = (rect.width / 2).astype(int)
+        height = (rect.height / 2).astype(int)
+        theta = np.radians(theta)
+
+        # Translation Matrix
+        t_mat = np.zeros((3, 3))
+        t_mat[0, 0], t_mat[1, 1], t_mat[2, 2] = 1, 1, 1
+        t_mat[0, 2], t_mat[1, 2] = center[1], center[0]
+
+        # Scaler Matrix
+        s_mat = np.zeros((3, 3))
+        s_mat[0, 0], s_mat[1, 1], s_mat[2, 2] = width, height, 1
+
+        # Rotation Matrix
+        r_1 = [np.cos(theta), np.sin(theta), 0]
+        r_2 = [-np.sin(theta), np.cos(theta), 0]
+        r_3 = [0, 0, 1]
+        r_mat = np.column_stack((r_1, r_2, r_3))
+
+        affine_mat = t_mat @ r_mat @ s_mat
+        return affine_mat
+    
+    center = rect.center.copy()
+    theta = rect.theta
+    bounds = Bounds([-center_radi, -center_radi, -theta_radi], [center_radi, center_radi, theta_radi])
+    opt_solution = dual_annealing(objective_function, bounds, maxiter = 100)
+    delta = opt_solution.x
+    delta_center = delta[:2].astype(int)
+    delta_theta = round(delta[2],1)
+    rect.center = center + delta_center
+    rect.theta = theta + delta_theta
