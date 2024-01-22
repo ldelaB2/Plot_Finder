@@ -169,6 +169,22 @@ class ortho_photo:
         for e in range(self.num_points):
             center = self.point_grid[e]
             subI = sub_image(self.g_ortho, self.boxradius, center)
+            """
+                subI.disp_subI()
+                plt.plot(subI.boxradius[1],subI.boxradius[0], 'r*')
+                subI.axis = 0
+                subI.computeFFT()
+                subI.plotFFT()
+                subI.filterFFT(None, 1)
+                subI.plotMask()
+                subI.generateWave()
+                subI.plotFreqWave()
+                subI.convertWave2Spacial()
+                subI.plotSpacialWave()
+                subI.calcPixelValue(1, False)
+                print(subI.pixelval)
+
+            """
             row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
 
         # Finding dominant frequency in row (column) direction
@@ -318,11 +334,11 @@ class ortho_photo:
         
 
 
-    def optomize_plots(self, miter, ncore, center_radi, theta_radi):
+    def optomize_plots(self, miter, center_radi, theta_radi):
         for e in range(miter):
             print(f"Starting Optomization Iteration {e + 1}")
             self.final_rect_list.compute_model()
-            self.final_rect_list.optomize_rect_list(ncore, center_radi, theta_radi)
+            self.final_rect_list.optomize_rect_list(center_radi, theta_radi)
             self.final_rect_list.disp_rectangles()
         
         print("Finished Optomizing Rectangles")

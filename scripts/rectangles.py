@@ -56,6 +56,7 @@ class rectangle_list:
         height = (self.unit_height / 2).astype(int)
         center = rect.center
         theta = rect.theta
+        theta = np.radians(theta)
 
         # Translation Matrix
         t_mat = np.zeros((3, 3))
@@ -119,8 +120,7 @@ class rectangle_list:
 
 
     def extract_rectangle(self, rect):
-        if rect.points is None:
-            self.compute_points(rect)
+        self.compute_points(rect)
 
         rotated_points = rect.points
         img  = self.img
@@ -181,18 +181,11 @@ class rectangle_list:
         self.rect_list = self.rect_list + new_rect_list
  
 
-    def optomize_rect_list(self, ncore, center_radi, theta_radi):
+    def optomize_rect_list(self, center_radi, theta_radi):
         for e in tqdm(range(len(self.rect_list)), desc = "Optomizing Rectangles"):
             rect = self.rect_list[e]
             optomize_rectangles((self.img, self.model, rect, center_radi, theta_radi, self.unit_sqr))
 
-        """
-        with mp.Pool(processes=ncore) as pool:
-            _ = pool.map(
-                optomize_rectangles,
-                tqdm([(self.img, self.model, rect, center_radi, theta_radi, self.unit_sqr) for rect in self.rect_list], desc = "Optomizing Rectangles")
-            )
-        """
 
                
 def optomize_rectangles(args):
