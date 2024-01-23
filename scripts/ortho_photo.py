@@ -1,4 +1,4 @@
-import os, multiprocessing, copy
+import os, multiprocessing
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +6,10 @@ from PIL import Image
 from functions import *
 from wave_pad import wavepad
 from sub_image import sub_image
-from rectangles import rectangle_list
+from rectangles import rectangle
+from operator import itemgetter
+from copy import deepcopy
+from tqdm import tqdm
 
 class ortho_photo:
     def __init__(self, in_path, out_path, name):
@@ -175,7 +178,7 @@ class ortho_photo:
                 subI.axis = 0
                 subI.computeFFT()
                 subI.plotFFT()
-                subI.filterFFT(None, 1)
+                subI.filterFFT(None, 10)
                 subI.plotMask()
                 subI.generateWave()
                 subI.plotFreqWave()
@@ -318,39 +321,49 @@ class ortho_photo:
         self.compute_col_skel(poly_degree_col)
         self.compute_range_skel(poly_degree_range)
         
-        starting_rect, range_cnt, row_cnt, mean_width, mean_height = build_rectangles(self.range_skel, self.col_skel)
+        starting_rect, range_cnt, row_cnt = build_rectangles(self.range_skel, self.col_skel)
+
+        mean_width = np.mean(np.array(list(map(itemgetter(2), starting_rect)))).astype(int)
+        mean_height = np.mean(np.array(list(map(itemgetter(3), starting_rect)))).astype(int)
+
         rows_2_find = nrow - row_cnt
         ranges_2_find = nrange - range_cnt
 
+        for e, rect in enumerate(starting_rect):
+            rect = rectangle(rect)
+            rect.width = mean_width
+            rect.height = mean_height
+            starting_rect[e] = rect
+
         if rows_2_find > 0 or ranges_2_find > 0:
-            self.impute_rectangles(starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height)
+            self.impute_rectangles(starting_rect, rows_2_find, ranges_2_find)
         elif rows_2_find < 0 or ranges_2_find < 0:
             self.remove_rectangles(starting_rect, rows_2_find, ranges_2_find)
         else:
             print("No Rectangles to Impute or Remove")
             self.final_rect_list = starting_rect
 
-        self.final_rect_list.img = self.rgb_ortho
-        
 
-
-    def optomize_plots(self, miter, center_radi, theta_radi):
+    def optomize_plots(self, miter, x_radi, y_radi, theta_radi):
         for e in range(miter):
             print(f"Starting Optomization Iteration {e + 1}")
-            self.final_rect_list.compute_model()
-            self.final_rect_list.optomize_rect_list(center_radi, theta_radi)
-            self.final_rect_list.disp_rectangles()
+            model = compute_model(self.final_rect_list, self.rgb_ortho)
+            for k in tqdm(range(len(self.final_rect_list)), desc = "Optomizing Rectangles"):
+                self.final_rect_list[k].optomize_rectangle(self.rgb_ortho, model, x_radi, y_radi, theta_radi)
+           
+            disp_rectangles(self.final_rect_list, self.rgb_ortho)
         
         print("Finished Optomizing Rectangles")
 
 
-    def impute_rectangles(self, starting_rect, rows_2_find, ranges_2_find, mean_width, mean_height):
-        train_rect = rectangle_list(starting_rect, mean_width, mean_height, self.g_ortho)
-        train_fft_scores = train_rect.compute_fft_score()
+    def impute_rectangles(self, starting_rect, rows_2_find, ranges_2_find):
+        train_fft_scores = compute_fft_mat(starting_rect, self.g_ortho)
+        d_height = starting_rect[0].height
+        d_width = starting_rect[0].width
 
         # Finding missing ranges
         while ranges_2_find > 0:
-            ranges = [rect.range for rect in train_rect.rect_list]
+            ranges = [rect.range for rect in starting_rect]
             max_range = np.max(ranges)
             min_range = np.min(ranges)
 
@@ -359,32 +372,30 @@ class ortho_photo:
             temp_top_list = []
             temp_bottom_list = []
             for e in range(len(top_rect)):
-                top_center = train_rect.rect_list[top_rect[e,0]].center.copy()
-                bottom_center = train_rect.rect_list[bottom_rect[e,0]].center.copy()
-                top_center[0] = top_center[0] - mean_height
-                bottom_center[0] = bottom_center[0] + mean_height
+                temp_top_rect = deepcopy(starting_rect[top_rect[e,0]])
+                temp_bottom_rect = deepcopy(starting_rect[bottom_rect[e,0]])
+                temp_top_rect.center_y = temp_top_rect.center_y - d_height
+                temp_bottom_rect.center_y = temp_bottom_rect.center_y + d_height
+                temp_top_rect.range = min_range - 1
+                temp_bottom_rect.range = max_range + 1
+                temp_top_list.append(temp_top_rect)
+                temp_bottom_list.append(temp_bottom_rect)
 
-                temp_top_list.append((top_center, 0,[min_range - 1, e]))
-                temp_bottom_list.append((bottom_center, 0, [max_range + 1, e]))
-
-            top_rect = rectangle_list(temp_top_list, mean_width, mean_height, self.g_ortho)
-            bottom_rect = rectangle_list(temp_bottom_list, mean_width, mean_height, self.g_ortho)
-            top_fft_scores = top_rect.compute_fft_score()
-            bottom_fft_scores = bottom_rect.compute_fft_score()
+            top_fft_scores = compute_fft_mat(temp_top_list, self.g_ortho)
+            bottom_fft_scores = compute_fft_mat(temp_bottom_list, self.g_ortho)
 
             top_dist = compute_fft_distance(top_fft_scores, train_fft_scores)
             bottom_dist = compute_fft_distance(bottom_fft_scores, train_fft_scores)
-
             if top_dist < bottom_dist:
-                train_rect.add_rectangles(top_rect.rect_list)
+                starting_rect = starting_rect + temp_top_list
             else:
-                train_rect.add_rectangles(bottom_rect.rect_list)
+                starting_rect = starting_rect + temp_bottom_list
             
             ranges_2_find -= 1
         
         # Finding missing rows
         while rows_2_find > 0:
-            rows = [rect.row for rect in train_rect.rect_list]
+            rows = [rect.row for rect in starting_rect]
             max_row = np.max(rows)
             min_row = np.min(rows)
 
@@ -393,30 +404,29 @@ class ortho_photo:
             temp_left_list = []
             temp_right_list = []
             for e in range(len(left_rect)):
-                left_center = train_rect.rect_list[left_rect[e,0]].center.copy()
-                right_center = train_rect.rect_list[right_rect[e,0]].center.copy()
-                left_center[1] = left_center[1] - mean_width
-                right_center[1] = right_center[1] + mean_width
-
-                temp_left_list.append((left_center, 0,[e, min_row - 1]))
-                temp_right_list.append((right_center, 0, [e, max_row + 1]))
+                temp_left_rect = deepcopy(starting_rect[left_rect[e,0]])
+                temp_right_rect = deepcopy(starting_rect[right_rect[e,0]])
+                temp_left_rect.center_x = temp_left_rect.center_x - d_width
+                temp_right_rect.center_x = temp_right_rect.center_x + d_width
+                temp_left_rect.row = min_row - 1
+                temp_right_rect.row = max_row + 1
+                temp_left_list.append(temp_left_rect)
+                temp_right_list.append(temp_right_rect)
             
-            left_rect = rectangle_list(temp_left_list, mean_width, mean_height, self.g_ortho)
-            right_rect = rectangle_list(temp_right_list, mean_width, mean_height, self.g_ortho)
-            left_fft_scores = left_rect.compute_fft_score()
-            right_fft_scores = right_rect.compute_fft_score()
+            left_fft_scores = compute_fft_mat(temp_left_list, self.g_ortho)
+            right_fft_scores = compute_fft_mat(temp_right_list, self.g_ortho)
 
             left_dist = compute_fft_distance(left_fft_scores, train_fft_scores)
             right_dist = compute_fft_distance(right_fft_scores, train_fft_scores)
 
             if left_dist < right_dist:
-                train_rect.add_rectangles(left_rect.rect_list)
+                starting_rect = starting_rect + temp_left_list
             else:
-                train_rect.add_rectangles(right_rect.rect_list)
+                starting_rect = starting_rect + temp_right_list
 
             rows_2_find -= 1
 
-        self.final_rect_list = train_rect
+        self.final_rect_list = starting_rect
         print("Finished Imputing Edge Rectangles")
 
 

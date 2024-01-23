@@ -74,9 +74,10 @@ def main():
         
         # Optomizing plot locations
         miter = 5
-        center_radi = 20
+        x_radi = 20
+        y_radi = 50
         theta_radi = 5
-        current_photo.optomize_plots(miter, center_radi, theta_radi)
+        current_photo.optomize_plots(miter, x_radi, y_radi, theta_radi)
 
         # --------------------------Processing Plot Extraction ------------------------------
         # Extracting plots and creating geo shape file

@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from PIL import Image
 import multiprocessing, os
 
@@ -134,9 +135,8 @@ def build_rectangles(range_skel, col_skel):
         width = ((w1 + w2)/2).astype(int)
         height = ((h1 + h2)/2).astype(int)
         center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
-        rect = (center, 0)
-        return rect, width, height
-
+        rect = np.append(center, [width, height, 0])
+        return rect
 
     num_ranges, ld_range, _, _ = dialated_labeled_skel(range_skel)
     
@@ -146,8 +146,6 @@ def build_rectangles(range_skel, col_skel):
     rect_list = []
     range_cnt = 0
     rect_cnt = 0
-    mean_width = 0
-    mean_height = 0
 
     for e in range(1, num_ranges - 1):
         top_indx = set(map(tuple, np.argwhere(ld_range == e)))
@@ -163,22 +161,25 @@ def build_rectangles(range_skel, col_skel):
             bottom_left = bottom_points[k,:]
             bottom_right = bottom_points[k + 1,:]
             points = [top_left, top_right, bottom_left, bottom_right]
-            rect, t_width, t_height = four_2_five_rect(points)
-            mean_width += t_width
-            mean_height += t_height
+            rect = four_2_five_rect(points)
             position = [range_cnt, row_cnt]
-            rect = rect + (position,)
+            rect = np.append(rect, position)
             rect_list.append(rect)
             row_cnt += 1
             rect_cnt += 1
 
         range_cnt += 1
 
-    mean_width = (mean_width / rect_cnt).astype(int)
-    mean_height = (mean_height / rect_cnt).astype(int)
-    
-    return rect_list, range_cnt, row_cnt, mean_width, mean_height
+    return rect_list, range_cnt, row_cnt
         
+def compute_fft_mat(rect_list, img):
+    scores = np.zeros((len(rect_list), rect_list[0].width))
+    for e,rect in enumerate(rect_list):
+        fsig = rect.compute_fft(img)
+        scores[e,:] = fsig
+
+    return scores
+
 def compute_fft_distance(test_set, train_set):
     total_dist = 0
     for e in range(test_set.shape[0]):
@@ -190,7 +191,32 @@ def compute_fft_distance(test_set, train_set):
     
     return total_dist
 
+def compute_model(rect_list, img):
+    width = rect_list[0].width
+    height = rect_list[0].height
 
+    model = np.zeros((height, width, 3))
+    for rect in rect_list:
+        sub_img = rect.create_sub_image(img)
+        model = model + sub_img
+
+    model = (model / len(rect_list)).astype(int)
+    return model
+
+def disp_rectangles(rect_list, img):
+    fig, ax = plt.subplots(1)
+    ax.imshow(img)
+
+    for rect in rect_list:
+        width = (rect.width / 2).astype(int)
+        height = (rect.height / 2).astype(int)
+        bottom_left_x = rect.center_x - width
+        bottom_left_y = rect.center_y - height
+        rect_path = patches.Rectangle((bottom_left_x,bottom_left_y), rect.width, rect.height, linewidth=1, edgecolor='r', facecolor='none')
+        ax.add_patch(rect_path)
+
+    plt.show()
+    return fig, ax
 
 def create_phase2_mask( signal, numfreq, radius=None, supressor=None, disp=False):
     """
