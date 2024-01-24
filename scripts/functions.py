@@ -3,40 +3,81 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
-import multiprocessing, os
+import multiprocessing, os, json
 
-def create_input_args(raw_path, ncore = None):
-    """
-    This function creates the input arguments for the image processing.
 
-    Parameters:
-        raw_path (str): The path to the raw data.
-        ncore (int, optional): The number of cores to use for multiprocessing. If not provided, it will use all available cores.
 
-    Returns:
-        ncore (int): The number of cores to use for multiprocessing.
-        input_path (str): The path to the input images.
-        output_path (str): The path to the output directory.
+def set_params(raw_path):
+    default_params = {
+    "input_path": None, # Path to read input
+    "output_path": None, # Path to save output
+    "num_cores": None, # Number of cores to use
+    "gray_scale_method": "LAB",
+    "QC_depth": "min", # Specifies how much of the qc output to save
+    "box_radius": [800,500], # Box radius is the size of sub images; 0 = height, 1 = width
+    "sparse_skip": [100,100], # Step size for sparse grid
+    "freq_filter_width": 1, # Controls how many frequencies we let in when searching
+    "row_sig_remove": None, # How many frequencies around the center to set to 0
+    "num_sig_returned": 2, # How many frequencies to include in the mask
+    "expand_radi": 5, # How many pixels to return for each subI 0 = row, 1 = column
+    "wave_pixel_expand": 0, # Controls how many positions in the wave are measured to find pixel value
+    "poly_deg_range": 3, # Degree of polynomial used to fit range points
+    "poly_deg_row": 1, # Degree of polynomial used to fit row points
+    "nrows": None, # Number of rows in the image
+    "nranges": None, # Number of ranges in the image
+    "optomize_plots": True, # If true, the plot positions are optomized
+    "optomization_meta_miter": 5, # Number of times to run the optomization over model
+    "optomization_miter": 100, # Number of times to run the optomization over each plot
+    "optomization_x_radi": 20, # How many pixels to move the plot in the x direction
+    "optomization_y_radi": 50, # How many pixels to move the plot in the y direction
+    "optomization_theta_radi": 5, # How many degrees to rotate the plot
+    "optomization_import_model": False, # If true, the model is imported from the specified path
+    "optomization_model_path": None, # Path to import model from
+    "save_plots": True, # If true, the plots are saved in the output Output/Plots
+    "create_shapefile": True # If true, a shapefile is created in the output Output/Shapefiles
+    }
 
-    It first checks if the number of cores is provided. If not, it tries to get the number of cores using multiprocessing.cpu_count(). If that fails, it tries to get the number of cores using os.cpu_count(). If that also fails, it defaults to 1 core.
+    user_param_path = os.path.join(raw_path, "params.json")
 
-    It then constructs the paths to the input images and the output directory. If the output directory does not exist, it creates it.
-    """
-    if ncore is None:
-        ncore = multiprocessing.cpu_count()
-        if ncore is None:
-            ncore = os.cpu_count()
-            if ncore is None:
-                ncore = 1
-    
-    input_path = os.path.join(raw_path, 'Images')
-    output_path = os.path.join(raw_path, 'Output')
     try:
-        os.mkdir(output_path)
+        with open(user_param_path, 'r') as file:
+            user_params = json.load(file)
+    except FileNotFoundError:
+        print("No user params found, please create a params.json file")
+        exit()
+    except json.decoder.JSONDecodeError:
+        print("Invalid JSON format, please fix the params.json file")
+        exit()
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+    
+    for param, default_value in default_params.items():
+        if param not in user_params:
+            user_params[param] = default_value
+    
+    user_params["input_path"] = os.path.join(raw_path, 'Images')
+    user_params["output_path"] = os.path.join(raw_path, 'Output')
+
+    try:
+        os.mkdir(user_params["output_path"])
     except:
         pass
     
-    return ncore, input_path, output_path
+    if user_params["num_cores"] is None:
+        user_params["num_cores"] = multiprocessing.cpu_count()
+        if user_params["num_cores"] is None:
+            user_params["num_cores"] = os.cpu_count()
+            if user_params["num_cores"] is None:
+                user_params["num_cores"] = 1
+    
+    if user_params["nrows"] is None:
+        print("nrows not specified in params.json")
+        exit()
+    if user_params["nranges"] is None:
+        print("nranges not specified in params.json")
+        exit()
+    
+    return user_params
 
 
 def build_path(img_shape, boxradius, skip):
@@ -191,6 +232,7 @@ def compute_fft_distance(test_set, train_set):
     
     return total_dist
 
+
 def compute_model(rect_list, img):
     width = rect_list[0].width
     height = rect_list[0].height
@@ -218,41 +260,26 @@ def disp_rectangles(rect_list, img):
     plt.show()
     return fig, ax
 
-def create_phase2_mask( signal, numfreq, radius=None, supressor=None, disp=False):
-    """
-    This function creates a mask for a signal in the frequency domain.
-
-    Parameters:
-        signal (ndarray): The input signal.
-        numfreq (int): The number of frequencies to keep in the mask.
-        radius (int, optional): The radius of the suppressor. If provided, frequencies within this radius are set to zero.
-        suppressor (int, optional): The suppressor value. If provided, it is used to suppress frequencies around the center.
-        disp (bool, optional): If True, the mask is plotted. Defaults to False.
-
-    Returns:
-        ndarray: The mask for the signal.
-
-    The function first checks if a suppressor is provided. If it is, it sets the signal values within the suppressor radius to zero.
-    It then sorts the signal in descending order and keeps the indices of the numfreq largest values.
-    It creates a mask of zeros with the same shape as the signal and sets the values at the kept indices to one.
-    If disp is True, it plots the mask.
-    Finally, it returns the mask.
-    """
-    if supressor is not None:
-        signal[(radius - supressor):(radius + supressor)] = 0
-        ssig = np.argsort(signal)[::-1]
-    else:
-        ssig = np.argsort(signal)[::-1]
-
+def create_phase2_mask(signal, numfreq):
+    ssig = np.argsort(signal)[::-1]
     freq_index = ssig[:numfreq]
     mask = np.zeros_like(signal)
     mask[freq_index] = 1
-
-    if disp:
-        plt.plot(mask)
-        plt.show()
+    
     return mask
 
+def plot_mask(mask):
+    plt.ioff()
+    plt.close('all')
+    fig, ax = plt.subplots()
+    ax.plot(mask)
+    offset = 0
+    for i, val in enumerate(mask):
+        if val > 0:
+            plt.annotate(str(i), (i, val + offset))
+            offset -= .1
+
+    return fig, ax
 
 def find_mode(arr):
     """

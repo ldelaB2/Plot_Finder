@@ -48,7 +48,7 @@ class sub_image:
         y_box, x_box = self.boxradius
         self.image = self.original_image[(y - y_box):(y + y_box),(x - x_box):(x + x_box)]
 
-    def phase2(self,FreqFilterWidth, direction, mask, num_pixels):
+    def phase2(self,FreqFilterWidth, direction, mask, expand_radi):
         """
         This method performs the second phase of the image processing.
 
@@ -72,10 +72,13 @@ class sub_image:
         self.filterFFT(mask, FreqFilterWidth)
         self.generateWave()
         self.convertWave2Spacial()
-        self.calcPixelValue(num_pixels)
-        return self.pixelval
+        
+        tindex = 1 - self.axis
+        pixelval = self.SpacialWave[(self.boxradius[tindex] - expand_radi):(self.boxradius[tindex] + expand_radi + 1)]
 
-    def phase1(self, FreqFilterWidth, DispOutput = False):
+        return pixelval
+
+    def phase1(self, FreqFilterWidth):
         """
         This method performs the first phase of the image processing.
 
@@ -102,26 +105,12 @@ class sub_image:
         self.generateWave()
         row_wave = abs(self.FreqWave)
 
-        # Pretty graphs
-        if DispOutput:
-            self.disp_subI()
-            self.plotFFT()
-            self.plotMask()
-            self.plotFreqWave()
-
         #Processing ranges
         self.axis = 1
         self.computeFFT()
         self.filterFFT(None, FreqFilterWidth)
         self.generateWave()
         range_wave = abs(self.FreqWave)
-
-        #Pretty graphs
-        if DispOutput:
-            self.disp_subI()
-            self.plotFFT()
-            self.plotMask()
-            self.plotFreqWave()
 
         return row_wave, range_wave
 
@@ -200,36 +189,8 @@ class sub_image:
         Finally, it takes the real part of the converted wave and stores it in the SpacialWave attribute.
         """
         # Compute Spacial Wave
-        self.SpacialWave = np.real(ifft(fftshift(self.FreqWave)))
+        self.SpacialWave = bindvec(np.real(ifft(fftshift(self.FreqWave))))
 
-    def calcPixelValue(self, num_pixels, disp = False):
-        """
-        This method calculates the pixel value of the spatial wave.
-
-        Parameters:
-            num_pixels (int): The number of pixels to be used in the calculation.
-            disp (bool, optional): If True, it will display the projection and the number of pixels.
-
-        Attributes Modified:
-            self.pixelval: The calculated pixel value.
-
-        It first creates a projection with the same shape as the mask and sets the value at the specified number of pixels to 1.
-        Then, it calculates the dot product of the spatial wave and the projection and divides it by the number of pixels to get the pixel value.
-        Finally, it stores the pixel value in the pixelval attribute.
-        If disp is True, it prints the number of pixels and displays the projection.
-        """
-        proj = np.zeros_like(self.mask)
-        tindex = 1 - self.axis
-        if num_pixels == 0:
-            proj[self.boxradius[tindex]] = 1
-        else:
-            proj[(self.boxradius[tindex] - num_pixels):(self.boxradius[tindex] + num_pixels + 1)] = 1
-        self.pixelval = np.float32((np.dot(self.SpacialWave, proj)) / np.sum(proj == 1))
-
-        if disp:
-            print(np.sum(proj == 1))
-            plt.plot(proj)
-            plt.show()
 
     def plotSpacialWave(self):
         """

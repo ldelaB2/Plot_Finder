@@ -12,7 +12,7 @@ from copy import deepcopy
 from tqdm import tqdm
 
 class ortho_photo:
-    def __init__(self, in_path, out_path, name):
+    def __init__(self, name, params):
         """
         This is the constructor method for the ortho_photo class.
 
@@ -29,8 +29,8 @@ class ortho_photo:
             self.plots_path: The path to the "plots" subdirectory within the output directory.
         """
         self.name = os.path.splitext(name)[0]
-        self.in_path = os.path.join(in_path, name)
-        self.out_path = out_path
+        self.ortho_path = os.path.join(params["input_path"], name)
+        self.params = params
         self.create_output_dirs()
 
     def create_output_dirs(self):
@@ -46,7 +46,7 @@ class ortho_photo:
             self.QC_path: The path to the "QC" subdirectory within the output directory.
             self.plots_path: The path to the "plots" subdirectory within the output directory.
         """
-        subdir = os.path.join(self.out_path, self.name)
+        subdir = os.path.join(self.params["output_path"], self.name)
         self.QC_path = os.path.join(subdir, "QC")
         self.plots_path = os.path.join(subdir, "plots")
         try:
@@ -73,8 +73,8 @@ class ortho_photo:
         Attributes Created:
             self.rgb_ortho: The original photo read into memory as an array.
         """
-        self.rgb_ortho = cv.imread(self.in_path)
-        self.create_g()
+        self.rgb_ortho = cv.imread(self.ortho_path)
+        self.create_g(self.params["gray_scale_method"])
         self.rotate_img()
 
     def rotate_img(self):
@@ -109,7 +109,7 @@ class ortho_photo:
         self.g_ortho = cv.warpAffine(self.g_ortho, rotation_matrix, (new_width,new_height))
         self.rgb_ortho = cv.warpAffine(self.rgb_ortho, rotation_matrix, (new_width, new_height))
 
-    def create_g(self):
+    def create_g(self, method):
         """
         This method creates a grayscale version of the input photo.
 
@@ -118,76 +118,24 @@ class ortho_photo:
         Attributes Created:
             self.g_ortho: The grayscale version of the photo.
         """
-        self.g_ortho = cv.cvtColor(self.rgb_ortho, cv.COLOR_BGR2LAB)[:,:,2]
+        if method == "LAB":
+            self.g_ortho = cv.cvtColor(self.rgb_ortho, cv.COLOR_BGR2LAB)[:,:,2]
 
-    def build_scatter_path(self, boxradius, skip, expand_radi = None, disp = False):
-        """
-        This method builds a scatter path on the grayscale image.
-
-        Parameters:
-            boxradius (int): The radius of the box to be used in the scatter path.
-            skip (tuple): The number of rows and columns to skip between points in the scatter path.
-            expand_radi (tuple, optional): The number of rows and columns to expand the scatter path. If provided, it will override the skip parameter.
-            disp (bool, optional): If True, it will display the scatter path on the grayscale image.
-
-        Attributes Created:
-            self.boxradius: The radius of the box to be used in the scatter path.
-            self.point_grid: A list of points in the scatter path.
-            self.num_points: The number of points in the scatter path.
-        """
-        if expand_radi is not None:
-            skip = ((1 + 2 * expand_radi[0]), (1 + 2 * expand_radi[1]))
-            self.expand_radi = expand_radi
-
-        self.boxradius = boxradius
-        img_shape = self.g_ortho.shape
-        self.point_grid, self.num_points = build_path(img_shape, boxradius, skip)
-
-        if disp:
-            plt.imshow(self.g_ortho, cmap='gray')
-            for point in self.point_grid:
-                plt.scatter(point[0], point[1], c='red', marker='*')
-                plt.axis('on')
-            plt.show()
-
-    def phase1(self, FreqFilterWidth, num_sig_returned, row_sig_remove, disp = False):
-        """
-        This method performs the first phase of the image processing.
-
-        Parameters:
-            FreqFilterWidth (int): The width of the frequency filter to be used.
-            num_sig_returned (int): The number of signals to return.
-            row_sig_remove (int): The the number of row signals to remove.
-            disp (bool, optional): If True, it will display the average row and range signals.
-
-        Attributes Created:
-            self.row_mask: The mask created for the row signals.
-            self.range_mask: The mask created for the range signals.
-        """
+    
+    def phase1(self):
+        FreqFilterWidth = self.params["freq_filter_width"]
+        num_sig_returned = self.params["num_sig_returned"]
+        row_sig_remove = self.params["row_sig_remove"]
+        
+        sparse_grid, num_points = build_path(self.g_ortho.shape, self.params["box_radius"], self.params["sparse_skip"])
+        
         # Preallocate memory
-        range_waves = np.zeros((self.num_points, (2 * self.boxradius[0])))
-        row_waves = np.zeros((self.num_points, (2 * self.boxradius[1])))
+        range_waves = np.zeros((num_points, (2 * self.params["box_radius"][0])))
+        row_waves = np.zeros((num_points, (2 * self.params["box_radius"][1])))
 
         # Loop through sparse grid; returning the abs of Freq Wave
-        for e in range(self.num_points):
-            center = self.point_grid[e]
-            subI = sub_image(self.g_ortho, self.boxradius, center)
-            """
-                subI.disp_subI()
-                plt.plot(subI.boxradius[1],subI.boxradius[0], 'r*')
-                subI.axis = 0
-                subI.computeFFT()
-                subI.plotFFT()
-                subI.filterFFT(None, 10)
-                subI.plotMask()
-                subI.generateWave()
-                subI.plotFreqWave()
-                subI.convertWave2Spacial()
-                subI.plotSpacialWave()
-                subI.calcPixelValue(1, False)
-                print(subI.pixelval)
-
-            """
+        for e in range(num_points):
+            subI = sub_image(self.g_ortho, self.params["box_radius"], sparse_grid[e])
             row_waves[e, :], range_waves[e, :] = subI.phase1(FreqFilterWidth)
 
         # Finding dominant frequency in row (column) direction
@@ -195,81 +143,70 @@ class ortho_photo:
         # Finding dominant frequency in range (row) direction
         range_sig = np.mean(range_waves, 0)
 
-        if disp:
-            fig, axes = plt.subplots(nrows=1, ncols=2)
-            axes[0].plot(row_sig)
-            axes[0].set_title('Avg Row Signal')
-            axes[1].plot(range_sig)
-            axes[1].set_title('Avg Range Signal')
-            plt.tight_layout()
-            plt.show()
+        if self.params["row_sig_remove"] is not None:
+            row_sig[(self.params["box_radius"][1] - self.params["row_sig_remove"]):(self.params["box_radius"][1] + self.params["row_sig_remove"])] = 0
             
         # Creating the masks
-        self.row_mask = create_phase2_mask(row_sig, num_sig_returned, self.boxradius[1], row_sig_remove, disp)
-        self.range_mask = create_phase2_mask(range_sig, num_sig_returned, disp)
+        self.row_mask = create_phase2_mask(row_sig, num_sig_returned)
+        self.range_mask = create_phase2_mask(range_sig, num_sig_returned)
 
-    def phase2(self, FreqFilterWidth, wave_pixel_expand, ncore = None):
-        """
-        This method performs the second phase of the wavepad creation process.
+        # Saving the output for Quality Control
+        if self.params["QC_depth"] == "max":
+            name = 'Phase2_Row_Mask.jpg'
+            fig, _ = plot_mask(self.row_mask)
+            fig.savefig(os.path.join(self.QC_path, name))
 
-        Parameters:
-            FreqFilterWidth (int): The width of the frequency filter.
-            wave_pixel_expand (int): The number of pixels to expand the wavepad by.
-            ncore (int, optional): The number of cores to use for parallel processing. Defaults to None.
+            name = 'Phase2_Range_Mask.jpg'
+            fig, _ = plot_mask(self.range_mask)
+            fig.savefig(os.path.join(self.QC_path, name))
 
-        The method first creates a multiprocessing pool with the specified number of cores.
-        It then maps the `compute_phase2_fun` function to the pool, passing in the frequency filter width, row and range masks, wave pixel expansion, point grid, ortho photo, and box radius for each point in the point grid.
-        It reshapes the resulting raw wavepad and normalizes it to the range [0, 1].
-        Finally, it multiplies the raw wavepad by 255 and converts it to an unsigned 8-bit integer.
-        """
-        with multiprocessing.Pool(processes=ncore) as pool:
+
+
+    def phase2(self):
+        fine_skip = [self.params["expand_radi"] * 2, self.params["expand_radi"] * 2]
+        fine_grid, num_points = build_path(self.g_ortho.shape, self.params["box_radius"], fine_skip)
+        
+        with multiprocessing.Pool(processes=self.params["num_cores"]) as pool:
             rawwavepad = pool.map(
                 compute_phase2_fun,
-                [(FreqFilterWidth, self.row_mask, self.range_mask, wave_pixel_expand, self.point_grid[e], self.g_ortho, self.boxradius) for e in range(self.num_points)])
+                [(self.params["freq_filter_width"], self.row_mask, self.range_mask, fine_grid[e], self.g_ortho, self.params["box_radius"], self.params["expand_radi"]) for e in range(num_points)])
 
         # Invert the wavepad because we want the signal to be maxamized inbetween rows/ ranges
         # The signal we find will always be what is white in the gray scale image
-        self.rawwavepad = np.array(rawwavepad).reshape(-1,2)
-        self.rawwavepad[:,0] = 1 - bindvec(self.rawwavepad[:,0])
-        self.rawwavepad[:,1] = 1 - bindvec(self.rawwavepad[:,1])
-        self.rawwavepad = (self.rawwavepad * 255).astype(np.uint8)
+        row_wavepad = np.ones_like(self.g_ortho).astype(np.float64)
+        range_wavepad = np.ones_like(self.g_ortho).astype(np.float64)
 
-    def build_wavepad(self, disp):
-        """
-        This method builds the wavepad from the raw wavepad.
+        for e in range(len(rawwavepad)):
+            center = rawwavepad[e][2]
+            col_min = center[0] - self.params["expand_radi"]
+            col_max = center[0] + self.params["expand_radi"] + 1
+            row_min = center[1] - self.params["expand_radi"]
+            row_max = center[1] + self.params["expand_radi"] + 1
 
-        Parameters:
-            disp (bool, optional): Whether to display the wavepad. Defaults to False.
+            row_snp = np.tile(rawwavepad[e][0], (self.params["expand_radi"] * 2 + 1, 1))
+            range_snp = np.tile(rawwavepad[e][1], (self.params["expand_radi"] * 2 + 1, 1)).T
 
-        The method first normalizes the raw wavepad to the range [0, 1].
-        It then multiplies the normalized wavepad by 255 and converts it to an unsigned 8-bit integer.
-        If the disp parameter is True, it displays the wavepad.
-        Finally, it creates a wavepad object from the wavepad image and stores it in the wavepad attribute.
-        """
+            row_wavepad[row_min:row_max, col_min:col_max] = row_snp
+            range_wavepad[row_min:row_max, col_min:col_max] = range_snp
 
-        self.row_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
-        self.range_wavepad = np.zeros(self.g_ortho.shape).astype(np.uint8)
-        expand_radi = self.expand_radi
 
-        for e in range(self.num_points):
-            center = self.point_grid[e]
-            rowstrt = center[1] - expand_radi[0]
-            rowstp = center[1] + expand_radi[0] + 1
-            colstrt = center[0] - expand_radi[1]
-            colstp = center[0] + expand_radi[1] + 1
-
-            self.row_wavepad[rowstrt:rowstp, colstrt:colstp] = self.rawwavepad[e, 0]
-            self.range_wavepad[rowstrt:rowstp, colstrt:colstp] = self.rawwavepad[e, 1]
+        row_wavepad = 1 - row_wavepad
+        range_wavepad = 1 - range_wavepad
+        row_wavepad = (row_wavepad * 255).astype(np.uint8)
+        range_wavepad = (range_wavepad * 255).astype(np.uint8)
 
         # Saving the output for Quality Control
-        name = 'Raw_Row_Wave.jpg'
-        Image.fromarray(self.row_wavepad).save(os.path.join(self.QC_path, name))
-        name = 'Range_Row_Wave.jpg'
-        Image.fromarray(self.range_wavepad).save(os.path.join(self.QC_path, name))
-        print("Saved Wavepad QC")
-        self.filter_wavepad(disp)
+        if self.params["QC_depth"] != "none":
+            name = 'Raw_Row_Wave.jpg'
+            Image.fromarray(row_wavepad).save(os.path.join(self.QC_path, name))
+            name = 'Range_Row_Wave.jpg'
+            Image.fromarray(range_wavepad).save(os.path.join(self.QC_path, name))
+            print("Saved Wavepad QC")
 
-    def filter_wavepad(self, disp):
+        # Filtering the wavepad
+        self.filter_wavepad(row_wavepad, range_wavepad)
+        
+    def filter_wavepad(self, row_wavepad, range_wavepad):
         """
         This method filters the wavepad images.
 
@@ -492,9 +429,9 @@ def compute_phase2_fun(args):
     It then computes the phase 2 of the wavepad creation process for the row and range masks, passing in the frequency filter width and number of pixels to expand the wavepad by.
     Finally, it returns a tuple containing the raw wavepad for the row and range masks.
     """
-    FreqFilterWidth, row_mask, range_mask, num_pixles, center, image, boxradius = args
-    raw_wavepad = np.zeros(2)
+    FreqFilterWidth, row_mask, range_mask, center, image, boxradius, expand_radi = args
     subI = sub_image(image, boxradius, center)
-    raw_wavepad[0] = subI.phase2(FreqFilterWidth, 0, row_mask, num_pixles)
-    raw_wavepad[1] = subI.phase2(FreqFilterWidth, 1, range_mask, num_pixles)
-    return (raw_wavepad)
+    row_snip = subI.phase2(FreqFilterWidth, 0, row_mask, expand_radi)
+    range_snip = subI.phase2(FreqFilterWidth, 1, range_mask, expand_radi)
+
+    return (row_snip, range_snip, center)

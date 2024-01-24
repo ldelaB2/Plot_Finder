@@ -51,29 +51,31 @@ class rectangle:
 
 
     def optomize_rectangle(self, img, model, x_radi, y_radi, theta_radi):
-        print("T")
         # Create objective function
         def objective_function(x):
             dX, dY, dTheta = x[0], x[1], x[2]
-
-            center = rect.center.copy()
-            theta = rect.theta
-            center = center + np.array([dX, dY])
-            theta = theta + dTheta
-            sub_img = extract_rectangle(center, theta)
+            
+            unit_sqr = create_unit_square(self.width, self.height)
+            center_x = self.center_x + dX
+            center_y = self.center_y + dY
+            theta = self.theta + dTheta
+            
+            sub_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, unit_sqr, img)
             dist = np.linalg.norm(sub_img - model)
             return dist
 
-
-        center = rect.center.copy()
-        theta = rect.theta
+        # Optomize the rectangle
         bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
         opt_solution = dual_annealing(objective_function, bounds, maxiter = 100)
         delta = opt_solution.x
-        delta_center = delta[:2].astype(int)
+        delta_x = delta[0].astype(int)
+        delta_y = delta[1].astype(int)
         delta_theta = round(delta[2],1)
-        rect.center = center + delta_center
-        rect.theta = theta + delta_theta
+
+        # Update the rectangle
+        self.center_x = self.center_x + delta_x
+        self.center_y = self.center_y + delta_y
+        self.theta = self.theta + delta_theta
 
 
         
