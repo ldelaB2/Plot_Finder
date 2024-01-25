@@ -196,50 +196,34 @@ class ortho_photo:
         range_wavepad = (range_wavepad * 255).astype(np.uint8)
 
         # Saving the output for Quality Control
-        if self.params["QC_depth"] != "none":
-            name = 'Raw_Row_Wave.jpg'
+        if self.params["QC_depth"] == "max":
+            name = 'Row_Wavepad_Raw.jpg'
             Image.fromarray(row_wavepad).save(os.path.join(self.QC_path, name))
-            name = 'Range_Row_Wave.jpg'
+            name = 'Range_Wavepad_Raw.jpg'
             Image.fromarray(range_wavepad).save(os.path.join(self.QC_path, name))
-            print("Saved Wavepad QC")
+            print("Saved Raw Wavepad QC")
 
-        # Filtering the wavepad
-        self.filter_wavepad(row_wavepad, range_wavepad)
+        # Filtering to create binary wavepads
+        row_wavepad_binary = filter_wavepad(row_wavepad, 3)
+        range_wavepad_binary = filter_wavepad(range_wavepad, 3)
         
-    def filter_wavepad(self, row_wavepad, range_wavepad):
-        """
-        This method filters the wavepad images.
+        # Saving the output for Quality Control
+        if self.params["QC_depth"] != "none":
+            name = 'Row_Wavepad_Binary.jpg'
+            img = flatten_mask_overlay(self.rgb_ortho, row_wavepad_binary, .5)
+            img.save(os.path.join(self.QC_path, name))
+            name = 'Range_Wavepad_Binary.jpg'
+            img = flatten_mask_overlay(self.rgb_ortho, range_wavepad_binary, .5)
+            img.save(os.path.join(self.QC_path, name))
+            print("Saved Thresholded Wavepad QC")
 
-        Parameters:
-            disp (bool): Whether to display the filtered images.
-
-        The method first applies Otsu's thresholding to the row and range wavepad images to create binary images.
-        It then erodes the binary images using a 5x5 kernel with 3 iterations.
-        It overlays the binary images on the RGB ortho photo and saves these images.
-        If the disp parameter is True, it displays the overlay images.
-        """
-        _, self.row_wavepad_binary = cv.threshold(self.row_wavepad, 0, 1, cv.THRESH_OTSU)
-        _, self.range_wavepad_binary = cv.threshold(self.range_wavepad, 0, 1, cv.THRESH_OTSU)
-
-        kernel = np.ones((5,5), np.uint8)
-        self.row_wavepad_binary = cv.erode(self.row_wavepad_binary, kernel, iterations=3)
-        self.range_wavepad_binary = cv.erode(self.range_wavepad_binary, kernel, iterations=3)
-
-        # Creating the QC output
-        row_filtered_disp = flatten_mask_overlay(self.rgb_ortho, self.row_wavepad_binary, .5)
-        range_filtered_disp = flatten_mask_overlay(self.rgb_ortho, self.range_wavepad_binary, .5)
-
-        # Saving Output
-        name = 'Row_Wavepad_Threshold_Disp.jpg'
-        row_filtered_disp.save(os.path.join(self.QC_path, name))
-        name = 'Range_Wavepad_Threshold_Disp.jpg'
-        range_filtered_disp.save(os.path.join(self.QC_path, name))
-
-        if disp:
-            plt.imshow(row_filtered_disp)
-            plt.show()
-            plt.imshow(range_filtered_disp)
-            plt.show()
+        # Creating the wavepad object
+        working_wavepad = wavepad(row_wavepad_binary, range_wavepad_binary, self.QC_path, self.params)
+        working_wavepad.find_rows()
+        working_wavepad.find_ranges()
+        
+        
+      
 
     def find_plots(self, ncore, poly_degree_range, poly_degree_col, nrange, nrow):
         """

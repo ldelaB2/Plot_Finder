@@ -2,11 +2,11 @@ import os, multiprocessing
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
-from functions import find_mode, find_center_line
+from functions import find_mode, find_center_line, find_correct_sized_obj, trim_boarder, impute_skel
 from PIL import Image
 
 class wavepad:
-    def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output, ncore):
+    def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output, params):
         """
         Initializes the wavepad object.
 
@@ -21,7 +21,7 @@ class wavepad:
         self.row_wavepad_binary = row_wavepad_binary
         self.range_wavepad_binary = range_wavepad_binary
         self.output_path = QC_output
-        self.ncore = ncore
+        self.params = params
 
     def find_ranges(self, poly_degree):
         """
@@ -113,156 +113,30 @@ class wavepad:
         dialated_skel = cv.dilate(skel.astype(np.uint8), kernel)
         return dialated_skel, skel
 
-    def find_columns(self, poly_degree):
-        """
-        This method finds the columns in the wavepad image.
-
-        Parameters:
-            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
-
-        Returns:
-            ndarray: The dilated skeleton image.
-
-        The method first closes and blurs the row wavepad binary image.
-        It then finds the connected components in the image and calculates the normalized areas of these components.
-        It finds the components that are the correct size and filters out the incorrect size components, saving the filtered image.
-        It finds the connected components in the filtered image and draws a center line through each component by fitting a polynomial to the mean 'y' values for each 'x'.
-        Finally, it dilates the skeleton image and returns the dilated image.
-        """
-
+    def find_rows(self):
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20,20))
-        tmp = cv.morphologyEx(self.row_wavepad_binary, cv.MORPH_CLOSE, kernel)
-        tmp = cv.GaussianBlur(tmp, (5,5),2)
+        row_wavepad_binary = cv.morphologyEx(self.row_wavepad_binary, cv.MORPH_CLOSE, kernel)
+        row_wavepad_binary = cv.GaussianBlur(row_wavepad_binary, (5,5),2)
+        
+        # Trimming broaders
+        row_wavepad_binary = trim_boarder(row_wavepad_binary, 1)
 
-        # Finding Image object stats
-        _, obj_filtered_wavepad, img_stats, _ = cv.connectedComponentsWithStats(tmp)
-        object_areas = img_stats[:,4]
+        # Finding the correct sized objects
+        obj_filtered_row_wavepad = find_correct_sized_obj(row_wavepad_binary)
+        
+        # Saving QC Output
+        if self.params["QC_depth"] == "max":
+            name = 'Row_Object_Filtered_Wavepad.jpg'
+            Image.fromarray((obj_filtered_row_wavepad * 255).astype(int)).save(os.path.join(self.output_path,name))
 
-        # Finding the correct size objects
-        normalized_areas = np.zeros((object_areas.size,object_areas.size))
-        for e in range(object_areas.size):
-            for k in range(object_areas.size):
-                normalized_areas[e,k] = round(object_areas[e] / object_areas[k])
-
-        sum_count = np.sum(normalized_areas == 1, axis = 1)
-        mode_count = find_mode(sum_count)
-        find_indx = np.where(sum_count == mode_count)[0]
-        mu = np.mean(object_areas[find_indx])
-
-        correct_indx = np.zeros_like(object_areas)
-        for k in range(object_areas.size):
-            rel_object_size = round(object_areas[k] / mu)
-            if rel_object_size > .9 and rel_object_size < 1.25:
-                correct_indx[k] = 1
-            else:
-                correct_indx[k] = 0
-
-        # Filtering out incorrect size objects
-        mask = np.isin(obj_filtered_wavepad, np.where(correct_indx == 1))
-        obj_filtered_wavepad = np.where(mask, 1,0).astype(np.uint8)
-
-        # Saving the output
-        name = 'Row_Object_Filtered_Wavepad.jpg'
-        Image.fromarray(obj_filtered_wavepad * 255).save(os.path.join(self.output_path,name))
-
-        # Finding the objects
-        num_obj, obj_labeled_img, img_stats, _ = cv.connectedComponentsWithStats(obj_filtered_wavepad)
-
-        # Looping through all objects to draw center line
-        print("Finding center lines")
-        with multiprocessing.Pool(processes=self.ncore) as pool:
-            centerlines = pool.map(
-                find_center_line, [(obj_labeled_img, indx, poly_degree, obj_labeled_img.shape[0]) for indx in range(1,num_obj)]
-            )
-      
-        # Create Skeleton
-        skel = np.zeros_like(obj_filtered_wavepad)
-        center_points = np.array(centerlines)
-        center_x = center_points[:,:,1].flatten()
-        center_y = center_points[:,:,0].flatten()
-        skel[center_x, center_y] = 1
-        self.real_col_skel = skel
+        # Finding the center lines
+        center_lines_row_wavepad = find_center_line(obj_filtered_row_wavepad, self.params["poly_deg_row"], 0)
+        
+        # imputing missing columns
+        final_row_skel = impute_skel(center_lines_row_wavepad, 1)
 
         # Return Output
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
-        dialated_skel = cv.dilate(skel.astype(np.uint8), kernel)
+        dialated_skel = cv.dilate(final_row_skel, kernel)
         return dialated_skel
-
-    def imput_col_skel(self):
-        """
-        This method imputes missing columns in the wavepad image.
-
-        Returns:
-            tuple: A tuple containing the dilated skeleton image and the original skeleton image.
-
-        The method first dilates the real column skeleton image and finds the connected components in the image.
-        It calculates the distances between the centroids of the connected components and finds the mode of these distances.
-        It then finds the columns that need to be imputed and the number of columns to impute.
-        If no columns need to be imputed, it dilates the real column skeleton image and returns the dilated image and the original skeleton image.
-        Otherwise, it imputes the missing columns by interpolating between the existing columns.
-        It then dilates the column skeleton image and returns the dilated image and the original skeleton image.
-        """
-
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (10, 10))
-        tmp = cv.dilate(self.real_col_skel, kernel)
-        num_col, labeled_skel, stats, centroids = cv.connectedComponentsWithStats(np.transpose(tmp))
-        center_distance = np.array([])
-        for e in range(1, centroids.shape[0] - 1):
-            distance = abs(centroids[e,1] - centroids[e + 1,1])
-            center_distance = np.append(center_distance, distance)
-
-        center_distance = np.round(center_distance).astype(int)
-        avg_distance = find_mode(center_distance)
-        self.avg_col_spacing = avg_distance * 1.25
-        #plt.scatter(np.arange(center_distance.size), center_distance)
-
-        col_to_imput = np.where(center_distance > avg_distance * 1.25)[0]
-        num_cols_to_imput = np.round(center_distance[center_distance > avg_distance * 1.25] / avg_distance).astype(int)
-
-        #Return if no columns to impute
-        if col_to_imput.size == 0:
-            kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
-            dialated_skel = cv.dilate(self.real_col_skel.astype(np.uint8), kernel)
-            return dialated_skel, self.real_col_skel
-        else:
-            test = np.copy(self.real_col_skel.T)
-            indx = np.argwhere(self.real_col_skel.T != 0)
-            test[indx[:,0],indx[:,1]] = labeled_skel[indx[:,0],indx[:,1]]
-            labeled_skel = test
-            fake_col_skel = []
-            for e in range(col_to_imput.size):
-                top_side = np.column_stack(np.where(labeled_skel == (col_to_imput[e] + 1)))
-                bottom_side = np.column_stack(np.where(labeled_skel == (col_to_imput[e] + 2)))
-                top_side = top_side[np.argsort(top_side[:,1])]
-                bottom_side = bottom_side[np.argsort(bottom_side[:,1])]
-
-                # Avoiding error with vectors lengths
-                if top_side.shape[0] != bottom_side.shape[0]:
-                    if top_side.shape[0] > bottom_side.shape[0]:
-                        max_size = bottom_side.shape[0]
-                    else:
-                        max_size = top_side.shape[0]
-                else:
-                    max_size = top_side.shape[0]
-
-                top_y_cord = top_side[:max_size,0]
-                bottom_y_cord = bottom_side[:max_size,0]
-                step_size = np.round((bottom_y_cord - top_y_cord) / num_cols_to_imput[e]).astype(int)
-
-                for k in range(num_cols_to_imput[e] - 1):
-                    output = np.zeros((max_size,2)).astype(int)
-                    output[:,0] = top_side[:max_size,1]
-                    output[:,1] = top_side[:max_size,0] + step_size * (k + 1)
-                    fake_col_skel.append(output)
-
-            fake_col_skel = np.concatenate(fake_col_skel, axis = 0)
-            col_skel = self.real_col_skel
-            col_skel[fake_col_skel[:,0],fake_col_skel[:,1]] = 1
-
-            #Creating output to return
-            kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
-            dialated_skel = cv.dilate(self.col_skel, kernel)
-            return dialated_skel, col_skel
-
-

@@ -232,6 +232,57 @@ def compute_fft_distance(test_set, train_set):
     
     return total_dist
 
+def filter_wavepad(wavepad, erode_iter):
+    _, binary_wavpad = cv.threshold(wavepad, 0, 1, cv.THRESH_OTSU)
+    kernel = np.ones((5,5), np.uint8)
+    binary_wavpad = cv.erode(binary_wavpad, kernel, iterations = erode_iter)
+    return binary_wavpad
+
+
+def find_correct_sized_obj(img):
+    #Finding image object stats
+    _, labeled_img, stats, _ = cv.connectedComponentsWithStats(img)
+    object_areas = stats[:,4]
+    normalized_areas = np.zeros((object_areas.size, object_areas.size))
+    for e in range(object_areas.size):
+        for k in range(e + 1):
+            normalized_areas[e,k] = round(object_areas[e] / object_areas[k])
+
+    normalized_areas = normalized_areas + normalized_areas.T
+    sum_count = np.sum(normalized_areas == 1, axis = 1)
+    mode_count = find_mode(sum_count)
+    mode_index = np.where(sum_count == mode_count)[0]
+    mu = np.mean(object_areas[mode_index])
+    
+    correct_indx = np.zeros_like(object_areas)
+    for e in range(object_areas.size):
+        rel_object_size = round(object_areas[e] / mu)
+        if rel_object_size > .9 and rel_object_size < 1.25:
+            correct_indx[e] = 1
+        else:
+            correct_indx[e] = 0
+
+    mask = np.isin(labeled_img, np.where(correct_indx == 1))
+    filtered_img = np.where(mask, 1,0).astype(np.uint8)
+
+    return filtered_img
+
+def trim_boarder(img, direction):
+    t_sum = np.sum(img, axis = direction)
+    t_mode = find_mode(t_sum[t_sum != 0])
+    t_index = np.where(t_sum == t_mode)[0]
+    min_index = np.min(t_index)
+    max_index = np.max(t_index)
+    
+    if direction == 0:
+        img[:, :(min_index + 1)] = 0
+        img[:, max_index:] = 0
+    else:
+        img[:(min_index + 1), :] = 0
+        img[max_index:, :] = 0
+    
+    return img
+
 
 def compute_model(rect_list, img):
     width = rect_list[0].width
@@ -330,41 +381,82 @@ def findmaxpeak(signal, mask = None):
     return out
 
 
-def find_center_line(args):
-    """
-    This function overlays a mask on an image with a specified transparency.
+def find_center_line(img, poly_degree, direction):
+    num_obj, labeled_img, _, _ = cv.connectedComponentsWithStats(img)
+    skel = np.zeros_like(img)
 
-    Parameters:
-        image (ndarray): The input image.
-        mask (ndarray): The mask to overlay on the image.
-        alpha (float, optional): The transparency of the overlay. Defaults to 0.5.
+    for e in range(1, num_obj):
+        subset = np.column_stack(np.where(labeled_img == e))
+        unique_values, counts = np.unique(subset[:, direction], return_counts=True)
+        position = np.bincount(subset[:, direction], weights=subset[:, (1 - direction)])
+        mean_values = (position[unique_values] / counts).astype(int)
+        coefficients = np.polyfit(unique_values, mean_values, poly_degree)
+        poly = np.poly1d(coefficients)
+        x = np.arange(0, img.shape[direction], 1)
+        y = poly(x).astype(int)
 
-    Returns:
-        ndarray: The image with the mask overlay.
+        if direction == 0:
+            img_points = skel[x,y]
+            if np.max(img_points) == 0:
+                skel[x, y] = 1
+        else:
+            img_points = skel[y,x]
+            if np.max(img_points) == 0:
+                skel[y, x] = 1
 
-    The function first checks if the image is a color image (i.e., has more than 2 dimensions).
-    If it is, it separates the red, green, and blue channels of the image.
-    If it is not, it uses the grayscale image for all three channels.
-    It then multiplies the mask by the color for each channel to create a colored mask.
-    Finally, it overlays the colored mask on each channel of the image using the specified transparency and returns the result.
-    """
-    obj_labeled_img, indx, poly_degree, img_size = args
+    return skel
     
-    subset_y = np.column_stack(np.where(obj_labeled_img == indx))
-    # Calculate mean 'x' for each 'y'
-    unique_vales, counts = np.unique(subset_y[:, 0], return_counts=True)
-    x_position = np.bincount(subset_y[:, 0], weights=subset_y[:, 1])
-    mean_x_values = (x_position[unique_vales] / counts).astype(int)
-    # Fit a polynomial to these points
-    coefficients = np.polyfit(unique_vales, mean_x_values, poly_degree)
-    poly = np.poly1d(coefficients)
-    # Get the x and y coordinates
-    x = np.arange(0, img_size, 1)
-    y = poly(x).astype(int)
-    # Create a list of tuples for the centerline
-    centerline = list(zip(y, x))
+def impute_skel(skel, direction):
+    if direction == 1:
+        skel = skel.T
+    
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
+    dialated_skel = cv.dilate(skel, kernel)
 
-    return centerline
+    num_obj, labeled_img, stats, centroids = cv.connectedComponentsWithStats(dialated_skel)
+    # labeled_img[np.where(labeled_img == 59)] = 0
+    # labeled_img[labeled_img != 0] = 1
+    # labeled_img = labeled_img.astype(np.uint8)
+    #  num_obj, labeled_img, stats, centroids = cv.connectedComponentsWithStats(labeled_img)
+
+    center_distance = np.array([])
+    for e in range(1, num_obj - 1):
+        distance = abs(centroids[e, direction] - centroids[e + 1, direction]).astype(int)
+        center_distance = np.append(center_distance, distance)
+
+    median_dist = np.median(center_distance)
+    avg_dist = (median_dist * 1.25).astype(int)
+
+    obj_to_impute = np.where(center_distance > avg_dist)[0]
+    impute_dist = (center_distance[obj_to_impute] / median_dist).astype(int)
+
+    if obj_to_impute.size == 0:
+        print("No objects to impute")
+    else:
+        indx = np.where(skel != 0)
+        skel[indx] = labeled_img[indx]
+
+        for e in range(obj_to_impute.size):
+            top_indx = obj_to_impute[e] + 1
+            bottom_indx = obj_to_impute[e] + 2
+            top_side = np.column_stack(np.where(skel == top_indx))
+            bottom_side = np.column_stack(np.where(skel == bottom_indx))
+            top_side = top_side[np.argsort(top_side[:, 1])]
+            bottom_side = bottom_side[np.argsort(bottom_side[:, 1])]
+            step_size = ((bottom_side[:, 0] - top_side[:, 0]) / impute_dist[e]).astype(int)
+
+            for k in range(impute_dist[e] - 1):
+                new_obj = top_side
+                new_obj[:, 0] = top_side[:, 0] + step_size * (k + 1)
+                skel[new_obj[:, 0], new_obj[:, 1]] = 100
+
+    skel[skel != 0] = 1
+    skel = skel.astype(np.uint8)
+    
+    if direction == 1:
+        skel = skel.T
+
+    return skel
 
 
 def bindvec(in_array):
