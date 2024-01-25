@@ -1,9 +1,12 @@
-import os, multiprocessing
+import os
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
-from functions import find_mode, find_center_line, find_correct_sized_obj, trim_boarder, impute_skel
+from functions import find_center_line, find_correct_sized_obj, trim_boarder, impute_skel, build_rectangles, add_rectangles, remove_rectangles
 from PIL import Image
+from operator import itemgetter
+from rectangles import rectangle
+
 
 class wavepad:
     def __init__(self, row_wavepad_binary, range_wavepad_binary, QC_output, params):
@@ -23,95 +26,36 @@ class wavepad:
         self.output_path = QC_output
         self.params = params
 
-    def find_ranges(self, poly_degree):
-        """
-        This method finds the ranges in the wavepad image.
-
-        Parameters:
-            poly_degree (int): The degree of the polynomial to fit to the mean 'y' values for each 'x' in the skeleton image.
-
-        Returns:
-            tuple: A tuple containing the dilated skeleton image and the original skeleton image.
-
-        The method first closes and blurs the range wavepad binary image.
-        It then trims the borders of the image and finds the connected components in the image.
-        It calculates the normalized areas of the connected components and finds the components that are the correct size.
-        It then filters out the incorrect size components and saves the filtered image.
-        It finds the connected components in the filtered image and draws a center line through each component by fitting a polynomial to the mean 'y' values for each 'x'.
-        Finally, it dilates the skeleton image and returns the dilated image and the original skeleton image.
-        """
-
+    def find_ranges(self):
         # Closing the Image
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
-        tmp = cv.morphologyEx(self.range_wavepad_binary, cv.MORPH_CLOSE, kernel)
-        tmp = cv.GaussianBlur(tmp, (5, 5), 2)
+        range_wavepad_binary = cv.morphologyEx(self.range_wavepad_binary, cv.MORPH_CLOSE, kernel)
+        range_wavepad_binary = cv.GaussianBlur(range_wavepad_binary, (5, 5), 2)
 
         # Trimming broaders
-        t_sum = np.sum(tmp, 0)
-        t_mode = find_mode(t_sum[t_sum != 0])
-        t_index = np.where(t_sum == t_mode)
-        min_index = np.min(t_index)
-        max_index = np.max(t_index)
-        tmp[:, :(min_index + 1)] = 0
-        tmp[:, max_index:] = 0
+        range_wavepad_binary = trim_boarder(range_wavepad_binary, 0)
 
-        # Finding Image object stats
-        _, obj_filtered_wavepad, img_stats, _ = cv.connectedComponentsWithStats(tmp)
-        object_areas = img_stats[:, 4]
+        # Finding the correct sized objects
+        obj_filtered_range_wavepad = find_correct_sized_obj(range_wavepad_binary)
+        
+        # Saving QC Output
+        if self.params["QC_depth"] == "max":
+            name = 'Range_Object_Filtered_Wavepad.jpg'
+            Image.fromarray((obj_filtered_range_wavepad * 255).astype(int)).save(os.path.join(self.output_path,name))
 
-        # Finding the correct size objects
-        normalized_areas = np.zeros((object_areas.size - 1, object_areas.size - 1))
-        for e in range(1,object_areas.size):
-            for k in range(1,object_areas.size):
-                normalized_areas[e - 1, k - 1] = round(object_areas[e] / object_areas[k])
+       # Finding the center lines
+        center_lines_range_wavepad = find_center_line(obj_filtered_range_wavepad, self.params["poly_deg_range"], 1)
 
-        sum_count = np.sum(normalized_areas == 1, axis=1)
-        mode_count = find_mode(sum_count)
-        find_indx = np.where(sum_count == mode_count)[0]
-        mu = np.mean(object_areas[find_indx + 1])
+        # imputing missing columns
+        final_range_skel = impute_skel(center_lines_range_wavepad, 0)
 
-        correct_indx = np.zeros_like(object_areas)
-        for k in range(object_areas.size):
-            rel_object_size = round(object_areas[k] / mu)
-            if rel_object_size > .75 and rel_object_size < 2:
-                correct_indx[k] = 1
-            else:
-                correct_indx[k] = 0
+        # Return Output
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
+        dialated_skel = cv.dilate(final_range_skel, kernel)
+        self.final_range_skel = final_range_skel
 
-        # Filtering out incorrect size objects
-        mask = np.isin(obj_filtered_wavepad, np.where(correct_indx == 1))
-        obj_filtered_wavepad = np.where(mask, 1, 0).astype(np.uint8)
+        return dialated_skel
 
-        # Saving the output
-        name = 'Range_Object_Filtered_Wavepad.jpg'
-        Image.fromarray(obj_filtered_wavepad * 255).save(os.path.join(self.output_path, name))
-
-        # Finding the objects
-        num_obj, obj_labeled_img, img_stats, _ = cv.connectedComponentsWithStats(obj_filtered_wavepad)
-
-        # Looping through all objects to draw center line
-        skel = np.zeros_like(obj_filtered_wavepad)
-
-        for e in range(1, num_obj):
-            subset_x = np.column_stack(np.where(obj_labeled_img == e))
-            # Calculate mean 'y' for each 'x'
-            unique_vales, counts = np.unique(subset_x[:, 1], return_counts=True)
-            y_position = np.bincount(subset_x[:, 1], weights=subset_x[:, 0])
-            mean_y_values = (y_position[unique_vales] / counts).astype(int)
-            # Fit a polynomial to these points
-            coefficients = np.polyfit(unique_vales, mean_y_values, poly_degree)
-            poly = np.poly1d(coefficients)
-            # Get the x and y coordinates
-            x = np.arange(0, skel.shape[1], 1)
-            y = poly(x).astype(int)
-            # Set the corresponding points in skel to 1
-            skel[y, x] = 1
-          
-        # Returning output
-        self.real_range_skel = skel
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20,20))
-        dialated_skel = cv.dilate(skel.astype(np.uint8), kernel)
-        return dialated_skel, skel
 
     def find_rows(self):
         # Closing the Image
@@ -139,4 +83,43 @@ class wavepad:
         # Return Output
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
         dialated_skel = cv.dilate(final_row_skel, kernel)
+        self.final_row_skel = final_row_skel
+
         return dialated_skel
+    
+    def find_plots(self, img):
+        fft_rect, range_cnt, row_cnt = build_rectangles(self.final_range_skel, self.final_row_skel)
+
+        mean_width = np.mean(np.array(list(map(itemgetter(2), fft_rect)))).astype(int)
+        mean_height = np.mean(np.array(list(map(itemgetter(3), fft_rect)))).astype(int)
+
+        for e, rect in enumerate(fft_rect):
+            rect = rectangle(rect)
+            rect.width = mean_width
+            rect.height = mean_height
+            fft_rect[e] = rect
+
+        rows_2_find = self.params["nrows"] - row_cnt
+        ranges_2_find = self.params["nranges"] - range_cnt
+
+        if rows_2_find == 0 and ranges_2_find == 0:
+            print("All plots found from FFT")
+
+        if ranges_2_find < 0:
+            print(f"To many ranges found from FFT removing {abs(ranges_2_find)} range(s)")
+            fft_rect =  remove_rectangles(fft_rect, img, abs(ranges_2_find), 1)
+        else:
+            print(f"Finding {ranges_2_find} missing range(s) from FFT")
+            fft_rect = add_rectangles(fft_rect, img, ranges_2_find, 1)
+            
+        if rows_2_find < 0:
+            print(f"To many rows found from FFT removing {abs(rows_2_find)} row(s)")
+            fft_rect = remove_rectangles(fft_rect, img,  abs(rows_2_find), 0)
+        else:
+            print(f"Finding {rows_2_find} missing row(s) from FFT")
+            fft_rect = add_rectangles(fft_rect, img, rows_2_find, 0)
+
+        return fft_rect
+
+        
+

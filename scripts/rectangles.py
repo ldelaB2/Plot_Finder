@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft, fftshift
-from functions import bindvec
 from scipy.optimize import dual_annealing, Bounds
 
 class rectangle:
@@ -13,6 +12,7 @@ class rectangle:
         self.theta = rect[4]
         self.range = rect[5]
         self.row = rect[6]
+        self.flagged = False
 
     def compute_histogram(self, img):
         sub_image = self.create_sub_image(img)
@@ -40,7 +40,7 @@ class rectangle:
         sub_image = self.create_sub_image(img)
         sig = np.sum(sub_image, axis = 0)
         fsig = fftshift(fft(sig - np.mean(sig)))
-        amp = bindvec(abs(fsig))
+        amp = abs(fsig)
     
         return amp
     
@@ -50,12 +50,12 @@ class rectangle:
         return sub_image
 
 
-    def optomize_rectangle(self, img, model, x_radi, y_radi, theta_radi):
+    def optomize_rectangle(self, img, model, x_radi, y_radi, theta_radi, miter):
         # Create objective function
+        unit_sqr = create_unit_square(self.width, self.height)
         def objective_function(x):
             dX, dY, dTheta = x[0], x[1], x[2]
             
-            unit_sqr = create_unit_square(self.width, self.height)
             center_x = self.center_x + dX
             center_y = self.center_y + dY
             theta = self.theta + dTheta
@@ -66,7 +66,7 @@ class rectangle:
 
         # Optomize the rectangle
         bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
-        opt_solution = dual_annealing(objective_function, bounds, maxiter = 100)
+        opt_solution = dual_annealing(objective_function, bounds, maxiter = miter)
         delta = opt_solution.x
         delta_x = delta[0].astype(int)
         delta_y = delta[1].astype(int)

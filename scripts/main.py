@@ -18,7 +18,6 @@ def main(raw_path):
         print("Finished processing sparse grid")
 
         current_photo.phase2() # Compute phase 2
-        print("Finished processing fine grid")
         
         if params["optomize_plots"] == True:
             current_photo.optomize_plots() # Optomize plots
