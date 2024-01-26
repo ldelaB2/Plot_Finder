@@ -248,7 +248,7 @@ class ortho_photo:
 
     def optomize_plots(self):
         # Filtering out plots with low germination
-        optomization_list, flagged_list = filter_rectangles(self.final_rect_list, self.rgb_ortho)
+        optomization_list, flagged_list, model_list = filter_rectangles(self.final_rect_list, self.rgb_ortho)
 
         # Saving the output for Quality Control
         if self.params["QC_depth"] != "none":
@@ -265,7 +265,7 @@ class ortho_photo:
 
         # Optomizing the rectangles
         for e in range(meta_iter):
-            model = compute_model(optomization_list, self.rgb_ortho)
+            model = compute_model(model_list, self.rgb_ortho)
             for k in tqdm(range(len(optomization_list)), desc = f"Optomizaing Rectangles Iteration {e + 1}/{meta_iter}"):
                 optomization_list[k].optomize_rectangle(self.rgb_ortho, model, x_radi, y_radi, theta_radi, miter)
            
@@ -275,7 +275,7 @@ class ortho_photo:
                 img = disp_rectangles_img(optomization_list, self.rgb_ortho)
                 img.save(os.path.join(self.QC_path, name))
                 name = f'Optimization_Model_Iteration_{e + 1}.jpg'
-                img = Image.fromarray(model)
+                img = Image.fromarray(model.astype(np.uint8))
                 img.save(os.path.join(self.QC_path, name))
         
         print("Finished Optomizing Rectangles")

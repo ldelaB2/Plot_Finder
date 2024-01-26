@@ -30,7 +30,7 @@ def set_params(raw_path):
     "optomization_meta_miter": 3, # Number of times to run the optomization over model
     "optomization_miter": 100, # Number of times to run the optomization over each plot
     "optomization_x_radi": 20, # How many pixels to move the plot in the x direction
-    "optomization_y_radi": 50, # How many pixels to move the plot in the y direction
+    "optomization_y_radi": 30, # How many pixels to move the plot in the y direction
     "optomization_theta_radi": 5, # How many degrees to rotate the plot
     "optomization_import_model": False, # If true, the model is imported from the specified path
     "optomization_model_path": None, # Path to import model from
@@ -245,22 +245,44 @@ def filter_rectangles(rect_list, img):
     std_dist = np.std(hist_dist)
     threshold = mean_dist  + 3 * std_dist
     flagged_indx = np.where(hist_dist > threshold)[0]
+    model_indx = np.where(hist_dist <= mean_dist)[0]
 
     flagged_rect_list = [rect_list[indx] for indx in flagged_indx]
     for rect in flagged_rect_list:
         rect.flagged = True
 
+    model_rect_list = [rect_list[indx] for indx in model_indx]
+
     rect_list = [rect for e, rect in enumerate(rect_list) if e not in flagged_indx]
 
-    return rect_list, flagged_rect_list
+    return rect_list, flagged_rect_list, model_rect_list
+
+def find_consecutive_in_range(array, lower_bound, upper_bound):
+    count = 0
+    start_indx = 0
+
+    for i, val in enumerate(array):
+        if lower_bound <= val <= upper_bound:
+            if count == 0:
+                start_indx = i
+            count += 1
+            if count == 50:
+                return start_indx
+        else:
+            count = 0
+    
+    print("No point found within window increasing bounds")
+    return find_consecutive_in_range(array, lower_bound * 1.5, upper_bound* 1.5)
 
 
 def trim_boarder(img, direction):
     t_sum = np.sum(img, axis = direction)
     t_mode = find_mode(t_sum[t_sum != 0])
-    t_index = np.where(t_sum == t_mode)[0]
-    min_index = np.min(t_index)
-    max_index = np.max(t_index)
+    lower_bound = t_mode - 10
+    upper_bound = t_mode + 10
+    min_index = find_consecutive_in_range(t_sum, lower_bound, upper_bound)
+    max_index = find_consecutive_in_range(t_sum[::-1], lower_bound, upper_bound)
+    max_index = t_sum.size - max_index
     
     if direction == 0:
         img[:, :(min_index + 1)] = 0
@@ -281,7 +303,7 @@ def compute_model(rect_list, img):
         sub_img = rect.create_sub_image(img)
         model = model + sub_img
 
-    model = (model / len(rect_list)).astype(np.uint8)
+    model = (model / len(rect_list)).astype(int)
     return model
 
 def disp_rectangles_fig(rect_list, img):
