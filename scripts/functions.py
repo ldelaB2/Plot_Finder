@@ -27,7 +27,7 @@ def set_params(raw_path):
     "nrows": None, # Number of rows in the image
     "nranges": None, # Number of ranges in the image
     "optomize_plots": True, # If true, the plot positions are optomized
-    "optomization_meta_miter": 5, # Number of times to run the optomization over model
+    "optomization_meta_miter": 3, # Number of times to run the optomization over model
     "optomization_miter": 100, # Number of times to run the optomization over each plot
     "optomization_x_radi": 20, # How many pixels to move the plot in the x direction
     "optomization_y_radi": 50, # How many pixels to move the plot in the y direction
@@ -281,10 +281,10 @@ def compute_model(rect_list, img):
         sub_img = rect.create_sub_image(img)
         model = model + sub_img
 
-    model = (model / len(rect_list)).astype(int)
+    model = (model / len(rect_list)).astype(np.uint8)
     return model
 
-def disp_rectangles(rect_list, img):
+def disp_rectangles_fig(rect_list, img):
     fig, ax = plt.subplots(1)
     ax.imshow(img)
 
@@ -298,6 +298,57 @@ def disp_rectangles(rect_list, img):
 
     plt.show()
     return fig, ax
+
+def disp_rectangles_img(rect_list, img, name = False):
+    output_img = np.copy(img)
+    width = (rect_list[0].width / 2).astype(int)
+    height = (rect_list[0].height / 2).astype(int)
+    
+    for rect in rect_list:
+        top_left = (rect.center_x - width, rect.center_y - height)
+        bottom_right = (rect.center_x + width, rect.center_y + height)
+
+        if rect.flagged:
+            output_img = cv.rectangle(output_img, top_left, bottom_right, (0, 255, 0), 10)
+        else:
+            output_img = cv.rectangle(output_img, top_left, bottom_right, (255, 0, 0), 10)
+
+        if name:
+            font = cv.FONT_HERSHEY_SIMPLEX
+            scale = 1.5
+            color = (255,255,255)
+            position = (rect.center_x - width, rect.center_y)
+            thickness = 5
+            txt = str(rect.ID)
+            output_img = cv.putText(output_img, txt, position, font, scale, color, thickness, cv.LINE_AA)
+    
+    output_img = Image.fromarray(output_img)
+
+    return output_img
+    
+def correct_rect_range_row(rect_list):
+    range_list = [rect.range for rect in rect_list]
+    row_list = [rect.row for rect in rect_list]
+    range_list = np.array(range_list)
+    row_list = np.array(row_list)
+    unique_range = np.unique(range_list)
+    unique_row = np.unique(row_list)
+    range_cnt = 1
+    id_cnt = 1
+    for range_indx in unique_range:
+        row_cnt = 1
+        for row_indx in unique_row:
+            rect_indx = np.where((range_list == range_indx) & (row_list == row_indx))[0][0]
+            rect = rect_list[rect_indx]
+            rect.range = range_cnt
+            rect.row = row_cnt
+            rect.ID = id_cnt
+            id_cnt += 1
+            row_cnt += 1
+
+        range_cnt += 1
+
+    return rect_list
 
 def create_phase2_mask(signal, numfreq):
     ssig = np.argsort(signal)[::-1]

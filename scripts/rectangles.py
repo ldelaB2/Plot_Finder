@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft, fftshift
 from scipy.optimize import dual_annealing, Bounds
+from PIL import Image
 
 class rectangle:
     def __init__(self, rect):
@@ -13,6 +14,7 @@ class rectangle:
         self.range = rect[5]
         self.row = rect[6]
         self.flagged = False
+        self.ID = None
 
     def compute_histogram(self, img):
         sub_image = self.create_sub_image(img)
@@ -76,6 +78,12 @@ class rectangle:
         self.center_x = self.center_x + delta_x
         self.center_y = self.center_y + delta_y
         self.theta = self.theta + delta_theta
+
+    def save_rect(self, path, img):
+        sub_img = self.create_sub_image(img)
+        sub_img = sub_img.astype(np.uint8)
+        sub_img = Image.fromarray(sub_img)
+        sub_img.save(path)
 
 
         

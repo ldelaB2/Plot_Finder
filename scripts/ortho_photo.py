@@ -234,14 +234,27 @@ class ortho_photo:
         
         # Finding the initial rectangles
         self.final_rect_list = working_wavepad.find_plots(self.g_ortho)
+
+        # Saving the output for Quality Control
+        if self.params["QC_depth"] != "none":
+            name = 'FFT_Rectangles_Placement.jpg'
+            img = disp_rectangles_img(self.final_rect_list, self.rgb_ortho, name = True)
+            img.save(os.path.join(self.QC_path, name))
         
+        print("Finished Computing FFT Rectangle Placement")
+
         return
         
-      
 
     def optomize_plots(self):
         # Filtering out plots with low germination
         optomization_list, flagged_list = filter_rectangles(self.final_rect_list, self.rgb_ortho)
+
+        # Saving the output for Quality Control
+        if self.params["QC_depth"] != "none":
+            name = 'Flagged_Rectangles.jpg'
+            img = disp_rectangles_img(flagged_list, self.rgb_ortho)
+            img.save(os.path.join(self.QC_path, name))
 
         # Setting optomization parameters
         x_radi = self.params["optomization_x_radi"]
@@ -253,13 +266,43 @@ class ortho_photo:
         # Optomizing the rectangles
         for e in range(meta_iter):
             model = compute_model(optomization_list, self.rgb_ortho)
-            for k in tqdm(range(len(optomization_list)), desc = f"Optomizaing Rectangles Iteration {e + 1}"):
+            for k in tqdm(range(len(optomization_list)), desc = f"Optomizaing Rectangles Iteration {e + 1}/{meta_iter}"):
                 optomization_list[k].optomize_rectangle(self.rgb_ortho, model, x_radi, y_radi, theta_radi, miter)
            
-            disp_rectangles(optomization_list, self.rgb_ortho)
+            # Saving the output for Quality Control
+            if self.params["QC_depth"] != "none" and e != meta_iter - 1:
+                name = f'Optomized_Rectangles_Iteration_{e + 1}.jpg'
+                img = disp_rectangles_img(optomization_list, self.rgb_ortho)
+                img.save(os.path.join(self.QC_path, name))
+                name = f'Optimization_Model_Iteration_{e + 1}.jpg'
+                img = Image.fromarray(model)
+                img.save(os.path.join(self.QC_path, name))
         
         print("Finished Optomizing Rectangles")
-        return 
+        self.final_rect_list = optomization_list + flagged_list
+
+        if self.params["QC_depth"] != "none":
+            name = 'Optomized_Plot_Placement.jpg'
+            img = disp_rectangles_img(self.final_rect_list, self.rgb_ortho, name = True)
+            img.save(os.path.join(self.QC_path, name))
+
+        return
+    
+    def save_plots(self):
+        with multiprocessing.Pool(processes=self.params["num_cores"]) as pool:
+            pool.map(
+                save_plots_fun,
+                [(self.name, self.plots_path, rect, self.rgb_ortho) for rect in self.final_rect_list]
+                )
+        print("Finished Saving Plots")
+        return
+        
+
+def save_plots_fun(args):
+    img_name, plots_path, rect, img = args
+    name = f'{img_name}_{rect.range}_{rect.row}.jpg'
+    path = os.path.join(plots_path, name)
+    rect.save_rect(path, img)
 
 
 def compute_phase2_fun(args):

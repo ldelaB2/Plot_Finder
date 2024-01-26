@@ -31,5 +31,5 @@ def main(raw_path):
 
    
 if __name__ == '__main__':
-    raw_path = '/Users/willdelabretonne/Documents/Code/Python/OOP_Plot_Finder/test_imgs'
+    raw_path = '/Users/willdelabretonne/Drone_Images/plot_finder_test_corn'
     main(raw_path)

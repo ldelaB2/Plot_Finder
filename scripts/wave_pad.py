@@ -2,7 +2,7 @@ import os
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
-from functions import find_center_line, find_correct_sized_obj, trim_boarder, impute_skel, build_rectangles, add_rectangles, remove_rectangles
+from functions import find_center_line, find_correct_sized_obj, trim_boarder, impute_skel, build_rectangles, add_rectangles, remove_rectangles, correct_rect_range_row
 from PIL import Image
 from operator import itemgetter
 from rectangles import rectangle
@@ -106,18 +106,20 @@ class wavepad:
             print("All plots found from FFT")
 
         if ranges_2_find < 0:
-            print(f"To many ranges found from FFT removing {abs(ranges_2_find)} range(s)")
+            print(f"Removing {abs(ranges_2_find)} extra range(s) from FFT")
             fft_rect =  remove_rectangles(fft_rect, img, abs(ranges_2_find), 1)
         else:
             print(f"Finding {ranges_2_find} missing range(s) from FFT")
             fft_rect = add_rectangles(fft_rect, img, ranges_2_find, 1)
             
         if rows_2_find < 0:
-            print(f"To many rows found from FFT removing {abs(rows_2_find)} row(s)")
+            print(f"Removing {abs(rows_2_find)} extra row(s) from FFT")
             fft_rect = remove_rectangles(fft_rect, img,  abs(rows_2_find), 0)
         else:
             print(f"Finding {rows_2_find} missing row(s) from FFT")
             fft_rect = add_rectangles(fft_rect, img, rows_2_find, 0)
+
+        fft_rect = correct_rect_range_row(fft_rect)
 
         return fft_rect
 
