@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft, fftshift
-from scipy.optimize import dual_annealing, Bounds
+from scipy.optimize import dual_annealing, Bounds, minimize
 from PIL import Image
 
 class rectangle:
@@ -51,7 +51,7 @@ class rectangle:
         sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, unit_sqr, img)
         return sub_image
 
-
+  
     def optomize_rectangle(self, img, model, x_radi, y_radi, theta_radi, miter):
         # Create objective function
         unit_sqr = create_unit_square(self.width, self.height)
@@ -78,6 +78,8 @@ class rectangle:
         self.center_x = self.center_x + delta_x
         self.center_y = self.center_y + delta_y
         self.theta = self.theta + delta_theta
+
+        
 
     def save_rect(self, path, img):
         sub_img = self.create_sub_image(img)
@@ -124,6 +126,7 @@ def compute_points(center_x, center_y, theta, width, height, unit_sqr, img_shape
     rotated_points = np.dot(affine_mat, unit_sqr.T).T
     rotated_points = rotated_points[:,:2].astype(int)
 
+   
     # Checking to make sure points are within the image
     img_height, img_width = img_shape[:2]
     valid_y = (rotated_points[:, 1] >= 0) & (rotated_points[:, 1] < img_height)

@@ -8,41 +8,14 @@ from copy import deepcopy
 
 
 
-def set_params(raw_path):
-    default_params = {
-    "input_path": None, # Path to read input
-    "output_path": None, # Path to save output
-    "num_cores": None, # Number of cores to use
-    "gray_scale_method": "LAB",
-    "QC_depth": "min", # Specifies how much of the qc output to save
-    "box_radius": [800,500], # Box radius is the size of sub images; 0 = height, 1 = width
-    "sparse_skip": [100,100], # Step size for sparse grid
-    "freq_filter_width": 1, # Controls how many frequencies we let in when searching
-    "row_sig_remove": None, # How many frequencies around the center to set to 0
-    "num_sig_returned": 2, # How many frequencies to include in the mask
-    "expand_radi": 5, # How many pixels to return for each subI 0 = row, 1 = column
-    "wave_pixel_expand": 0, # Controls how many positions in the wave are measured to find pixel value
-    "poly_deg_range": 3, # Degree of polynomial used to fit range points
-    "poly_deg_row": 1, # Degree of polynomial used to fit row points
-    "nrows": None, # Number of rows in the image
-    "nranges": None, # Number of ranges in the image
-    "optomize_plots": True, # If true, the plot positions are optomized
-    "optomization_meta_miter": 3, # Number of times to run the optomization over model
-    "optomization_miter": 100, # Number of times to run the optomization over each plot
-    "optomization_x_radi": 20, # How many pixels to move the plot in the x direction
-    "optomization_y_radi": 30, # How many pixels to move the plot in the y direction
-    "optomization_theta_radi": 5, # How many degrees to rotate the plot
-    "optomization_import_model": False, # If true, the model is imported from the specified path
-    "optomization_model_path": None, # Path to import model from
-    "save_plots": True, # If true, the plots are saved in the output Output/Plots
-    "create_shapefile": True # If true, a shapefile is created in the output Output/Shapefiles
-    }
-
-    user_param_path = os.path.join(raw_path, "params.json")
+def set_params(param_path):
+    default_param_path = os.path.join(os.path.dirname(__file__), "default_params.json")
+    with open(default_param_path, 'r') as file:
+        default_params = json.load(file)
 
     try:
-        with open(user_param_path, 'r') as file:
-            user_params = json.load(file)
+        with open(param_path, 'r') as file:
+            params = json.load(file)
     except FileNotFoundError:
         print("No user params found, please create a params.json file")
         exit()
@@ -53,32 +26,36 @@ def set_params(raw_path):
         print("Unexpected error:", sys.exc_info()[0])
     
     for param, default_value in default_params.items():
-        if param not in user_params:
-            user_params[param] = default_value
+        if param not in params:
+            params[param] = default_value
     
-    user_params["input_path"] = os.path.join(raw_path, 'Images')
-    user_params["output_path"] = os.path.join(raw_path, 'Output')
+    if params["input_path"] is None:
+        print("input_path not specified in params.json")
+        exit()
+    if params["output_path"] is None:
+        print("output_path not specified in params.json")
+        exit()
+    if params["nrows"] is None:
+        print("nrows not specified in params.json")
+        exit()
+    if params["nranges"] is None:
+        print("nranges not specified in params.json")
+        exit()
 
     try:
-        os.mkdir(user_params["output_path"])
+        os.mkdir(params["output_path"])
     except:
         pass
     
-    if user_params["num_cores"] is None:
-        user_params["num_cores"] = multiprocessing.cpu_count()
-        if user_params["num_cores"] is None:
-            user_params["num_cores"] = os.cpu_count()
-            if user_params["num_cores"] is None:
-                user_params["num_cores"] = 1
+    if params["num_cores"] is None:
+        params["num_cores"] = multiprocessing.cpu_count()
+        if params["num_cores"] is None:
+            params["num_cores"] = os.cpu_count()
+            if params["num_cores"] is None:
+                params["num_cores"] = 1
     
-    if user_params["nrows"] is None:
-        print("nrows not specified in params.json")
-        exit()
-    if user_params["nranges"] is None:
-        print("nranges not specified in params.json")
-        exit()
-    
-    return user_params
+   
+    return params
 
 
 def build_path(img_shape, boxradius, skip):

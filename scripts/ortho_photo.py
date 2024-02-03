@@ -10,7 +10,7 @@ from rectangles import rectangle
 from tqdm import tqdm
 
 class ortho_photo:
-    def __init__(self, name, params):
+    def __init__(self, params):
         """
         This is the constructor method for the ortho_photo class.
 
@@ -26,8 +26,8 @@ class ortho_photo:
             self.QC_path: The path to the "QC" subdirectory within the output directory.
             self.plots_path: The path to the "plots" subdirectory within the output directory.
         """
-        self.name = os.path.splitext(name)[0]
-        self.ortho_path = os.path.join(params["input_path"], name)
+        self.name = os.path.splitext(os.path.basename(params["input_path"]))[0]
+        self.ortho_path = params["input_path"]
         self.params = params
         self.create_output_dirs()
 
@@ -285,6 +285,10 @@ class ortho_photo:
             name = 'Optomized_Plot_Placement.jpg'
             img = disp_rectangles_img(self.final_rect_list, self.rgb_ortho, name = True)
             img.save(os.path.join(self.QC_path, name))
+            name = f'Optimization_Model_Iteration_{e + 1}.jpg'
+            img = Image.fromarray(model.astype(np.uint8))
+            img.save(os.path.join(self.QC_path, name))
+
 
         return
     

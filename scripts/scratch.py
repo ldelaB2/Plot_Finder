@@ -410,3 +410,36 @@ def optomize_placement(self):
         normalized_hist_dist = ((red_dist + green_dist + blue_dist) / 3).astype(int)
         
         return normalized_hist_dist
+
+
+
+
+
+{
+    "input_path": None, # Path to read input
+    "output_path": None, # Path to save output
+    "num_cores": None, # Number of cores to use
+    "gray_scale_method": "LAB",
+    "QC_depth": "min", # Specifies how much of the qc output to save
+    "box_radius": [800,500], # Box radius is the size of sub images; 0 = height, 1 = width
+    "sparse_skip": [100,100], # Step size for sparse grid
+    "freq_filter_width": 1, # Controls how many frequencies we let in when searching
+    "row_sig_remove": None, # How many frequencies around the center to set to 0
+    "num_sig_returned": 2, # How many frequencies to include in the mask
+    "expand_radi": 5, # How many pixels to return for each subI 0 = row, 1 = column
+    "wave_pixel_expand": 0, # Controls how many positions in the wave are measured to find pixel value
+    "poly_deg_range": 3, # Degree of polynomial used to fit range points
+    "poly_deg_row": 1, # Degree of polynomial used to fit row points
+    "nrows": None, # Number of rows in the image
+    "nranges": None, # Number of ranges in the image
+    "optomize_plots": True, # If true, the plot positions are optomized
+    "optomization_meta_miter": 3, # Number of times to run the optomization over model
+    "optomization_miter": 100, # Number of times to run the optomization over each plot
+    "optomization_x_radi": 20, # How many pixels to move the plot in the x direction
+    "optomization_y_radi": 20, # How many pixels to move the plot in the y direction
+    "optomization_theta_radi": 5, # How many degrees to rotate the plot
+    "optomization_import_model": False, # If true, the model is imported from the specified path
+    "optomization_model_path": None, # Path to import model from
+    "save_plots": True, # If true, the plots are saved in the output Output/Plots
+    "create_shapefile": True # If true, a shapefile is created in the output Output/Shapefiles
+}
