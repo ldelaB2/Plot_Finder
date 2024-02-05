@@ -5,6 +5,7 @@ FROM ubuntu:22.04
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y git libgl1-mesa-glx && \
+    apt-get install -y libglib2.0-0 && \
     apt-get install -y python3 python3-pip && \
     apt-get install -y jq && \
     # Verify Installation of python and pip
