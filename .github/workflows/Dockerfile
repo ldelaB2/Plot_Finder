@@ -1,9 +1,14 @@
-# Use python as the base image
-FROM python:3.9
+# Use ubuntu as the base image
+FROM ubuntu:22.04
 
-# Install git
+# Install core dependencies
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y git libgl1-mesa-glx && \
+    apt-get install -y python3 python3-pip && \
+    # Verify Installation of python and pip
+    python3 --version && pip3 --version && \
+    # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Define Environment variables
