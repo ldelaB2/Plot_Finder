@@ -1,4 +1,4 @@
-import os
+import os, sys
 from ortho_photo import ortho_photo
 from functions import set_params
 
