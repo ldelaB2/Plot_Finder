@@ -48,4 +48,3 @@ output_checkpoint_file="$(pwd)/output_checkpoint_file"
 cd $local_output_path
 iput -K -f -b -r -T --retries 5 -X $output_checkpoint_file . $irods_output_path
 
-tail -f /dev/null
