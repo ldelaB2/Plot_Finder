@@ -6,6 +6,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y git libgl1-mesa-glx && \
     apt-get install -y python3 python3-pip && \
+    apt-get install -y jq && \
     # Verify Installation of python and pip
     python3 --version && pip3 --version && \
     # Clean up

@@ -23,6 +23,6 @@
     "optomization_theta_radi": 5,
     "optomization_import_model": false,
     "optomization_model_path": null,
-    "save_plots": true,
+    "save_plots": false,
     "create_shapefile": true
 }
