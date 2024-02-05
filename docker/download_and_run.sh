@@ -30,3 +30,5 @@ iget -K -r -T --retries 5 -X input_checkpoint_file $IRODS_PATH .
 # Pushing results to cyverse
 #cd $SCRIPT_PATH
 #iput -K -f -b -r -T --retries 5 -X output_checkpoint_file Output $IRODS_PATH
+
+tail -f /dev/null
