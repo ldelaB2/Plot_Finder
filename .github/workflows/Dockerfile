@@ -35,4 +35,4 @@ RUN mkdir -p /root/.irods/ && \
     chmod +x /app/docker/download_and_run.sh
 
 # Specify the default command to run when the container starts
-ENTRYPOINT ["/app/docker/download_and_run.sh"]
+#ENTRYPOINT ["/app/docker/download_and_run.sh"]
