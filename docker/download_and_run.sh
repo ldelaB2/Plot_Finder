@@ -3,7 +3,7 @@
 # Set up iRODS 
 echo '{
   "irods_host": "'"$IRODS_HOST"'",
-  "irods_port": '$IRODS_PORT',
+  "irods_port": "'"$IRODS_PORT"'",
   "irods_zone_name": "'"$IRODS_ZONE"'",
   "irods_user_name": "'"$IRODS_USER_NAME"'",
   "irods_authentication_scheme": "native",
