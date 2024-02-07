@@ -31,5 +31,8 @@ RUN mkdir -p /root/.irods/ && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh
 
+# Set user to root
+USER root
+
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/bin/bash"]
