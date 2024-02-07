@@ -31,8 +31,8 @@ RUN mkdir -p /root/.irods/ && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh
 
-# Set user to root
-USER root
+# Disable the "no new privileges" flag
+RUN echo 'kernel.unprivileged_userns_clone=1' > /etc/sysctl.d/00-local-userns.conf
 
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/bin/bash"]
