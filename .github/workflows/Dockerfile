@@ -31,4 +31,4 @@ RUN mkdir -p /root/.irods/ && \
     /app/docker/install_iRODS.sh && \
 
 # Specify the default command to run when the container starts
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]
