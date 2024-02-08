@@ -29,5 +29,5 @@ RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
 RUN chmod +x /app/docker/install_iRODS.sh && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
-    chmod -R 777 /app
+    chmod -R a+rwx /app
 
