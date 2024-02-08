@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Set up iRODS 
-cd /app
 mkdir -p $PWD/.irods
 
 echo '{
