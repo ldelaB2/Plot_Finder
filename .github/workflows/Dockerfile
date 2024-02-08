@@ -34,7 +34,8 @@ RUN useradd -ms /bin/bash appuser && \
 
 # Install IRODS and make scripts executable
 RUN mkdir -p /home/appuser/.irods && \
-    #touch /home/appuser/.irods/irods_environment.json && \
+    touch /home/appuser/.irods/irods_environment.json && \
+    chown appuser /home/appuser/.irods/irods_environment.json && \
     chmod +x /app/docker/install_iRODS.sh && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
@@ -42,7 +43,6 @@ RUN mkdir -p /home/appuser/.irods && \
 
 
 
-USER root
 
 # Specify the default command to run when the container starts
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]
