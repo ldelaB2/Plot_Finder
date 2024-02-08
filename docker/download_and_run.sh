@@ -13,8 +13,7 @@ echo '{
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit
 
-# Making working directory
-mkdir -p /app/working_directory
+# Set up the working directory
 cd /app/working_directory
 
 # Downloading user specified params
