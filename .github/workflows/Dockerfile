@@ -26,15 +26,19 @@ WORKDIR /app
 RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
     pip install --no-cache-dir -r /app/requirements.txt
 
-# Setting User 
-USER root
-
 # Install IRODS and make scripts executable
 RUN mkdir -p /root/.irods/ && \
     chmod +x /app/docker/install_iRODS.sh && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
     mkdir -p /app/working_directory
+
+# Create new user and set premission
+RUN useradd -ms /bin/bash appuser && \
+    chown -R appuser /app && \
+    chown -R appuser /root/.irods
+
+USER appuser
 
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/bin/bash"]
