@@ -26,19 +26,21 @@ WORKDIR /app
 RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
     pip install --no-cache-dir -r /app/requirements.txt
 
+# Create new user and set premission
+RUN useradd -ms /bin/bash appuser && \
+    chown -R appuser /app
+    #chown appuser /root/.irods/irods_environment.json && \
+    #chmod -R o+rx /root/.irods
+
 # Install IRODS and make scripts executable
-RUN mkdir -p /root/.irods/ && \
-    touch /root/.irods/irods_environment.json && \
+RUN mkdir -p /home/appuser/.irods && \
+    #touch /home/appuser/.irods/irods_environment.json && \
     chmod +x /app/docker/install_iRODS.sh && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
     mkdir -p /app/working_directory
 
-# Create new user and set premission
-RUN useradd -ms /bin/bash appuser && \
-    chown -R appuser /app && \
-    chown appuser /root/.irods/irods_environment.json && \
-    chmod -R o+rx /root /root/.irods
+
 
 USER root
 

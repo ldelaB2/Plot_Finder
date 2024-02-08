@@ -8,7 +8,7 @@ echo '{
   "irods_user_name": "'"$IRODS_USER_NAME"'",
   "irods_authentication_scheme": "native",
   "irods_password": "'"$IRODS_PASSWORD"'"
-}' > /root/.irods/irods_environment.json
+}' > /home/appuser/.irods/irods_environment.json
 
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit
