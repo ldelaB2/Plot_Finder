@@ -28,6 +28,7 @@ RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
 
 # Install IRODS and make scripts executable
 RUN mkdir -p /root/.irods/ && \
+    touch /root/.irods/irods_environment.json && \
     chmod +x /app/docker/install_iRODS.sh && \
     /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
@@ -36,7 +37,7 @@ RUN mkdir -p /root/.irods/ && \
 # Create new user and set premission
 RUN useradd -ms /bin/bash appuser && \
     chown -R appuser /app && \
-    chown -R appuser /root/.irods
+    chmod 666 /root/.irods/irods_environment.json
 
 USER appuser
 
