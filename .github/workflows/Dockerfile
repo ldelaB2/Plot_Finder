@@ -37,7 +37,8 @@ RUN mkdir -p /root/.irods/ && \
 # Create new user and set premission
 RUN useradd -ms /bin/bash appuser && \
     chown -R appuser /app && \
-    chmod 666 /root/.irods/irods_environment.json
+    chown appuser /root/.irods/irods_environment.json && \
+    chmod -R o+rx /root /root/.irods
 
 USER root
 
