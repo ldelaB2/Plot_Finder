@@ -39,7 +39,7 @@ RUN useradd -ms /bin/bash appuser && \
     chown -R appuser /app && \
     chmod 666 /root/.irods/irods_environment.json
 
-USER appuser
+USER root
 
 # Specify the default command to run when the container starts
 ENTRYPOINT ["/bin/bash"]
