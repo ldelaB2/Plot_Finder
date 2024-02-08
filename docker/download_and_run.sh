@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Set up iRODS 
+mkdir -p $PWD/.irods
+
 echo '{
   "irods_host": "'"$IRODS_HOST"'",
   "irods_port": '$IRODS_PORT',
@@ -8,12 +10,16 @@ echo '{
   "irods_user_name": "'"$IRODS_USER_NAME"'",
   "irods_authentication_scheme": "native",
   "irods_password": "'"$IRODS_PASSWORD"'"
-}' > /home/appuser/.irods/irods_environment.json
+}' > $PWD/.irods/irods_environment.json
+
+# Set up iRODS environment variables
+export IRODS_ENVIRONMENT_FILE=$PWD/.irods/irods_environment.json
 
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit
 
 # Set up the working directory
+mkdir -p /app/working_directory
 cd /app/working_directory
 
 # Downloading user specified params
