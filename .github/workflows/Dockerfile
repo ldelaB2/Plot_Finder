@@ -19,8 +19,7 @@ ENV IRODS_PORT 1247
 ENV IRODS_ZONE iplant
 
 # Clone GitHub repository and download dependencies
-RUN cd /app && \
-    git clone https://github.com/ldelaB2/Plot_Finder.git . && \
+RUN git clone https://github.com/ldelaB2/Plot_Finder.git /app && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 # Install IRODS and make scripts executable
