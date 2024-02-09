@@ -19,7 +19,7 @@ ENV IRODS_PORT 1247
 ENV IRODS_ZONE iplant
 
 # Set the working directory in the container
-WORKDIR /app
+#WORKDIR /app
 
 # Clone GitHub repository and download dependencies
 RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
