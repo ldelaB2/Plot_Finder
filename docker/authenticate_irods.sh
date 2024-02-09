@@ -6,6 +6,7 @@ export IRODS_PORT='1247'
 export IRODS_HOST='data.cyverse.org'
 
 # Set up iRODS 
+cd /app
 mkdir -p $PWD/.irods
 
 echo '{
