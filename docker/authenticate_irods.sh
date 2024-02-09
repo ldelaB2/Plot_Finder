@@ -6,8 +6,8 @@ export IRODS_PORT='1247'
 export IRODS_HOST='data.cyverse.org'
 
 # Set up iRODS 
-cd /app
-mkdir -p $PWD/.irods
+mkdir -p /app/.irods
+touch /app/.irods/.irodsA
 
 echo '{
   "irods_host": "'"$IRODS_HOST"'",
@@ -16,12 +16,11 @@ echo '{
   "irods_user_name": "'"$IRODS_USER_NAME"'",
   "irods_authentication_scheme": "native",
   "irods_password": "'"$IRODS_PASSWORD"'"
-}' > $PWD/.irods/irods_environment.json
+}' > /app/.irods/irods_environment.json
 
 # Set up iRODS environment variables
-export IRODS_ENVIRONMENT_FILE=$PWD/.irods/irods_environment.json
-touch $PWD/.irods/.irodsA
-export IRODS_AUTHENTICATION_FILE=$PWD/.irods/.irodsA
+export IRODS_ENVIRONMENT_FILE=/app/.irods/irods_environment.json
+export IRODS_AUTHENTICATION_FILE=/app/.irods/.irodsA
 
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit

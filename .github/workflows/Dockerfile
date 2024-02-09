@@ -8,6 +8,7 @@ RUN apt-get update && \
     apt-get install -y libglib2.0-0 && \
     apt-get install -y python3 python3-pip && \
     apt-get install -y jq && \
+    apt-get install -y nano && \
     # Verify Installation of python and pip
     python3 --version && pip3 --version && \
     # Clean up
