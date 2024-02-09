@@ -4,6 +4,7 @@
 export IRODS_ZONE='iplant'
 export IRODS_PORT='1247'
 export IRODS_HOST='data.cyverse.org'
+export HOME='/app/.irods'
 
 # Set up iRODS 
 mkdir -p /app/.irods
