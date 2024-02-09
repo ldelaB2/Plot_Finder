@@ -13,21 +13,17 @@ RUN apt-get update && \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Define Environment variables
-ENV IRODS_HOST data.cyverse.org
-ENV IRODS_PORT 1247
-ENV IRODS_ZONE iplant
-
 # Set the working directory in the container
-#WORKDIR /app
+WORKDIR /app
 
 # Clone GitHub repository and download dependencies
-RUN git clone https://github.com/ldelaB2/Plot_Finder.git /app && \
-    pip install --no-cache-dir -r app/requirements.txt
+RUN git clone https://github.com/ldelaB2/Plot_Finder.git . && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Install IRODS and make scripts executable
 RUN chmod +x /app/docker/install_iRODS.sh && \
-    /app/docker/install_iRODS.sh && \
     chmod +x /app/docker/download_and_run.sh && \
+    chmod +x /app/docker/authenticate_irods.sh && \
+    /app/docker/install_iRODS.sh && \
     chmod -R a+rwx /app
 
