@@ -25,3 +25,4 @@ export IRODS_AUTHENTICATION_FILE=/app/.irods/.irodsA
 
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit
+export HOME='/'

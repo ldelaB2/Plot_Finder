@@ -41,7 +41,7 @@ class wavepad:
         # Saving QC Output
         if self.params["QC_depth"] == "max":
             name = 'Range_Object_Filtered_Wavepad.jpg'
-            Image.fromarray((obj_filtered_range_wavepad * 255).astype(int)).save(os.path.join(self.output_path,name))
+            Image.fromarray((obj_filtered_range_wavepad * 255).astype(np.uint8)).save(os.path.join(self.output_path,name))
 
        # Finding the center lines
         center_lines_range_wavepad = find_center_line(obj_filtered_range_wavepad, self.params["poly_deg_range"], 1)
@@ -72,7 +72,7 @@ class wavepad:
         # Saving QC Output
         if self.params["QC_depth"] == "max":
             name = 'Row_Object_Filtered_Wavepad.jpg'
-            Image.fromarray((obj_filtered_row_wavepad * 255).astype(int)).save(os.path.join(self.output_path,name))
+            Image.fromarray((obj_filtered_row_wavepad * 255).astype(np.uint8)).save(os.path.join(self.output_path,name))
 
         # Finding the center lines
         center_lines_row_wavepad = find_center_line(obj_filtered_row_wavepad, self.params["poly_deg_row"], 0)

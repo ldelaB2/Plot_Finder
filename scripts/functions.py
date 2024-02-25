@@ -5,6 +5,8 @@ import matplotlib.patches as patches
 from PIL import Image
 import multiprocessing, os, json
 from copy import deepcopy
+from scipy.stats import norm, expon, poisson
+from scipy.optimize import minimize, curve_fit, dual_annealing
 
 
 
@@ -125,6 +127,40 @@ def build_rectangles(range_skel, col_skel):
 
     return rect_list, range_cnt, row_cnt
         
+def pca(data, num_comp):
+    # Center the data
+    data = data - np.mean(data, axis = 0)
+
+    # Scale the data
+    col_std = np.std(data, axis = 0)
+    if np.any(col_std == 0):
+        print("Column with zero standard deviation found")
+        exit()
+    else:
+        data = data / col_std
+
+    # Compute the covariance matrix
+    cov = np.cov(data, rowvar = False)
+
+    # Compute the eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = np.linalg.eigh(cov)
+
+    # Sort the eigenvalues and eigenvectors
+    sorted_indx = np.argsort(eigenvalues)[::-1]
+    eigenvectors = eigenvectors[:, sorted_indx]
+    eigenvalues = eigenvalues[sorted_indx]
+    eign_pve = eigenvalues / np.sum(eigenvalues)
+
+    # Return the correct number of components
+    pc_eign_vect = eigenvectors[:, :num_comp]
+    pc_eign_val = eigenvalues[:num_comp]
+    pc_eign_pve = eign_pve[:num_comp]
+
+    proj_data = np.dot(data, pc_eign_vect)
+
+    return proj_data, pc_eign_vect, pc_eign_val, pc_eign_pve
+    
+
 
 def four_2_five_rect(points):
     top_left, top_right, bottom_left, bottom_right = points
@@ -162,11 +198,111 @@ def compute_fft_distance(test_set, train_set):
 
     return dist
 
-def filter_wavepad(wavepad, erode_iter):
-    _, binary_wavpad = cv.threshold(wavepad, 0, 1, cv.THRESH_OTSU)
-    kernel = np.ones((5,5), np.uint8)
-    binary_wavpad = cv.erode(binary_wavpad, kernel, iterations = erode_iter)
-    return binary_wavpad
+def filter_wavepad(wavepad, method = "otsu"):
+    if method == "otsu":
+        _, binary_wavpad = cv.threshold(wavepad, 0, 1, cv.THRESH_OTSU)
+        kernel = np.ones((5,5), np.uint8)
+        binary_wavpad = cv.erode(binary_wavpad, kernel, iterations = 3)
+        return binary_wavpad
+
+    elif method == "hist":
+        def hist_filter_wavepad(wavepad):
+            def model_function(x, lambda1, lambda2, p):
+                left_dist = p * poisson.pmf(x, mu = lambda1) 
+                right_dist = (1 - p) * poisson.pmf(255 - x, mu = lambda2)
+                total_dist = left_dist + right_dist
+                return total_dist
+            
+            def calc_prob(x, lambda1, lambda2, p):
+                left_dist = p * poisson.pmf(x, mu = lambda1) 
+                right_dist = (1 - p) * poisson.pmf(255 - x, mu = lambda2)
+                total_dist = left_dist + right_dist
+               
+                left_prob = np.where(total_dist > 0, left_dist / total_dist, 0)
+                right_prob = np.where(total_dist > 0, right_dist / total_dist, 0)
+                return left_prob, right_prob
+            
+            def objective_function(params, bin_centers, pixels_hist):
+                prob_dist = model_function(bin_centers, *params)
+                dist = - np.sum(pixels_hist * np.log(prob_dist + 1e-10))
+                return dist
+            
+            pixels = wavepad.reshape(-1)
+            pixels_hist, _ = np.histogram(pixels, bins = 256, density=True)
+            bin_left_edge = np.arange(0, 256, 1)
+
+            bounds = [(0,1), (0,1), (0,1)]
+            results = dual_annealing(objective_function, bounds, args=(bin_left_edge, pixels_hist), maxiter = 1000)
+            opt_params = results.x
+
+            #prob_dist = model_function(bin_left_edge, *opt_params)
+            # Compute the probability of each point
+            point_left_prob, point_right_prob = calc_prob(pixels, *opt_params)
+            binary_wavepad = np.where(point_left_prob >= point_right_prob, 0, 1)
+
+            # Create the wavepad
+            binary_wavepad = binary_wavepad.reshape(wavepad.shape)
+
+            return binary_wavepad
+
+        def fft_filter_wavepad(binary_wavepad):
+            center = np.round(binary_wavepad.shape[0] / 2).astype(int)
+            fft_filter_squash = 2
+            fft_amp_wavepad = np.zeros_like(binary_wavepad, dtype = np.float64)
+            fft_phase_wavepad = np.zeros_like(binary_wavepad, dtype= np.float64)
+
+            for e in range(binary_wavepad.shape[1]):
+                # Computing the fft
+                col = binary_wavepad[:,e]
+                col = col - np.mean(col)
+                fft_col = np.fft.fft(col)
+                fft_col = np.fft.fftshift(fft_col)
+                fft_amp = np.abs(fft_col)
+                fft_phase = np.angle(fft_col)
+
+                # Creating the filter
+                fft_filter = np.ones_like(fft_amp)
+                fft_filter[center - fft_filter_squash: center + fft_filter_squash] = 0
+
+                # Applying the filter
+                fft_amp = fft_amp * fft_filter
+                fft_phase = fft_phase * fft_filter
+                fft_amp_wavepad[:,e] = fft_amp
+                fft_phase_wavepad[:,e] = fft_phase
+            
+            # Creating the phase 2 mask
+            avg_fft = np.mean(fft_amp_wavepad, axis = 1)
+            max_indx = np.sort(avg_fft.argsort()[-2:])
+            mask = np.zeros_like(avg_fft)
+            mask[max_indx] = 1
+            
+            # Create the wavepad
+            wavepad = np.zeros_like(binary_wavepad, dtype = np.float64)
+            for e in range(binary_wavepad.shape[1]):
+                # Computing the spacial wave
+                fft_amp = fft_amp_wavepad[:,e] * mask
+                fft_phi = fft_phase_wavepad[:,e] * mask
+                fft_freq_wave = fft_amp * np.exp(1j * fft_phi)
+                spacial_wave = np.fft.ifft(np.fft.fftshift(fft_freq_wave))
+                #spacial_wave = np.round(bindvec(np.real(spacial_wave)) * 255).astype(np.uint8)
+                wavepad[:,e] = np.real(spacial_wave)
+
+            # Fix type and return
+            wavepad = np.round(bindvec(wavepad) * 255).astype(np.uint8)
+            return wavepad
+
+        epoc = 2
+        for e in range(epoc):
+            wavepad = hist_filter_wavepad(wavepad)
+            wavepad = fft_filter_wavepad(wavepad)
+            if e == epoc - 1:
+                wavepad = hist_filter_wavepad(wavepad)
+
+        return wavepad.astype(np.uint8)
+    
+    else:
+        print("Invalid filtering method")
+        exit()
 
 
 def find_correct_sized_obj(img):
@@ -249,7 +385,7 @@ def find_consecutive_in_range(array, lower_bound, upper_bound):
             count = 0
     
     print("No point found within window increasing bounds")
-    return find_consecutive_in_range(array, lower_bound * 1.5, upper_bound* 1.5)
+    return find_consecutive_in_range(array, lower_bound * .5, upper_bound* 1.5)
 
 
 def trim_boarder(img, direction):
@@ -659,3 +795,96 @@ def flatten_mask_overlay(image, mask, alpha = 0.5):
     img_copy = Image.fromarray(img_copy)
     return(img_copy)
 
+def create_unit_square(width, height):
+    # Creating the unit square
+    y = np.linspace(-1, 1, height)
+    x = np.linspace(-1, 1, width)
+    X, Y = np.meshgrid(x, y)
+    unit_sqr = np.column_stack((X.ravel(), Y.ravel(), np.ones_like(X.ravel())))
+
+    return unit_sqr 
+
+
+def create_affine_frame(center_x, center_y, theta, width, height):
+    if width != 0:
+        width = np.array(width / 2).astype(int)
+    if height != 0:
+        height = np.array(height / 2).astype(int)
+    #theta = np.radians(theta)
+
+    # Translation Matrix
+    t_mat = np.zeros((3, 3))
+    t_mat[0, 0], t_mat[1, 1], t_mat[2, 2] = 1, 1, 1
+    t_mat[0, 2], t_mat[1, 2] = center_x, center_y
+
+    # Scaler Matrix
+    s_mat = np.zeros((3, 3))
+    s_mat[0, 0], s_mat[1, 1], s_mat[2, 2] = width, height, 1
+
+    # Rotation Matrix
+    r_1 = [np.cos(theta), np.sin(theta), 0]
+    r_2 = [-np.sin(theta), np.cos(theta), 0]
+    r_3 = [0, 0, 1]
+    r_mat = np.column_stack((r_1, r_2, r_3))
+
+    affine_mat = t_mat @ r_mat @ s_mat
+    return affine_mat
+
+def compute_points(center_x, center_y, theta, width, height, unit_sqr, img_shape):
+    affine_mat = create_affine_frame(center_x, center_y, theta, width, height)
+    rotated_points = np.dot(affine_mat, unit_sqr.T).T
+    rotated_points = rotated_points[:,:2].astype(int)
+
+   
+    # Checking to make sure points are within the image
+    img_height, img_width = img_shape[:2]
+    valid_y = (rotated_points[:, 1] >= 0) & (rotated_points[:, 1] < img_height)
+    valid_x = (rotated_points[:, 0] >= 0) & (rotated_points[:, 0] < img_width)
+    invalid_points = (~(valid_x & valid_y))
+    rotated_points[invalid_points, :] = [0,0]
+
+    return rotated_points
+
+
+def extract_rectangle(center_x, center_y, theta, width, height, unit_sqr, img):
+    points = compute_points(center_x, center_y, theta, width, height, unit_sqr, img.shape)
+
+    if len(img.shape) > 2:
+        extracted_img = img[points[:, 1], points[:, 0], :]
+        extracted_img = np.reshape(extracted_img, (height, width, img.shape[2]))
+    else:
+        extracted_img = img[points[:, 1], points[:, 0]]
+        extracted_img = np.reshape(extracted_img, (height, width))
+        
+    return extracted_img
+             
+
+
+def single_gaussian(x, mu, sigma):
+    return norm.pdf(x, mu, sigma)
+
+def bimodal_gaussian(x, mu1, sigma1, mu2, sigma2, weight):
+    return weight * norm.pdf(x, mu1, sigma1) + (1 - weight) * norm.pdf(x, mu2, sigma2)
+            
+def trimodal_gaussian(x, mu1, sigma1, mu2, sigma2, mu3, sigma3, w1, w2):
+    return (w1 * norm.pdf(x, mu1, sigma1) + 
+            w2 * norm.pdf(x, mu2, sigma2) + 
+            (1 - w1 - w2) * norm.pdf(x, mu3, sigma3))
+
+# Calc the AIC function
+def calc_aic(y, yhat, k):
+    resid = y - yhat
+    sse = np.sum(resid**2)
+    n = len(y)
+    out = 2*k + n * np.log(sse/n)
+    return out
+
+# Calculating the probability of each pixel belonging to the distributions
+def calculate_prob(x, params):
+    mu1, sigma1, mu2, sigma2, weight = params
+    pdf1 = weight * norm.pdf(x, mu1, sigma1)
+    pdf2 = (1 - weight) * norm.pdf(x, mu2, sigma2)
+    total_prob = pdf1 + pdf2
+    prob1 = pdf1 / total_prob
+    prob2 = pdf2 / total_prob
+    return prob1, prob2

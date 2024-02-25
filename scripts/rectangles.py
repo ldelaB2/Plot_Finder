@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft, fftshift
-from scipy.optimize import dual_annealing, Bounds, minimize
+from scipy.optimize import dual_annealing, Bounds
 from PIL import Image
+from functions import create_unit_square, create_affine_frame, extract_rectangle
 
 class rectangle:
     def __init__(self, rect):
@@ -57,6 +58,9 @@ class rectangle:
         unit_sqr = create_unit_square(self.width, self.height)
         def objective_function(x):
             dX, dY, dTheta = x[0], x[1], x[2]
+            dX = np.round(dX).astype(int)
+            dY = np.round(dY).astype(int)
+            dTheta = np.round(dTheta).astype(int)
             
             center_x = self.center_x + dX
             center_y = self.center_y + dY
@@ -79,72 +83,15 @@ class rectangle:
         self.center_y = self.center_y + delta_y
         self.theta = self.theta + delta_theta
 
-        
-
     def save_rect(self, path, img):
         sub_img = self.create_sub_image(img)
         sub_img = sub_img.astype(np.uint8)
         sub_img = Image.fromarray(sub_img)
         sub_img.save(path)
 
-
-        
-def create_unit_square(width, height):
-    # Creating the unit square
-    y = np.linspace(-1, 1, height)
-    x = np.linspace(-1, 1, width)
-    X, Y = np.meshgrid(x, y)
-    unit_sqr = np.column_stack((X.ravel(), Y.ravel(), np.ones_like(X.ravel())))
-
-    return unit_sqr 
-
-def create_affine_frame(center_x, center_y, theta, width, height):
-    width = (width / 2).astype(int)
-    height = (height / 2).astype(int)
-    theta = np.radians(theta)
-
-    # Translation Matrix
-    t_mat = np.zeros((3, 3))
-    t_mat[0, 0], t_mat[1, 1], t_mat[2, 2] = 1, 1, 1
-    t_mat[0, 2], t_mat[1, 2] = center_x, center_y
-
-    # Scaler Matrix
-    s_mat = np.zeros((3, 3))
-    s_mat[0, 0], s_mat[1, 1], s_mat[2, 2] = width, height, 1
-
-    # Rotation Matrix
-    r_1 = [np.cos(theta), np.sin(theta), 0]
-    r_2 = [-np.sin(theta), np.cos(theta), 0]
-    r_3 = [0, 0, 1]
-    r_mat = np.column_stack((r_1, r_2, r_3))
-
-    affine_mat = t_mat @ r_mat @ s_mat
-    return affine_mat
-
-def compute_points(center_x, center_y, theta, width, height, unit_sqr, img_shape):
-    affine_mat = create_affine_frame(center_x, center_y, theta, width, height)
-    rotated_points = np.dot(affine_mat, unit_sqr.T).T
-    rotated_points = rotated_points[:,:2].astype(int)
-
-   
-    # Checking to make sure points are within the image
-    img_height, img_width = img_shape[:2]
-    valid_y = (rotated_points[:, 1] >= 0) & (rotated_points[:, 1] < img_height)
-    valid_x = (rotated_points[:, 0] >= 0) & (rotated_points[:, 0] < img_width)
-    invalid_points = (~(valid_x & valid_y))
-    rotated_points[invalid_points, :] = [0,0]
-
-    return rotated_points
-
-def extract_rectangle(center_x, center_y, theta, width, height, unit_sqr, img):
-    points = compute_points(center_x, center_y, theta, width, height, unit_sqr, img.shape)
-
-    if len(img.shape) > 2:
-        extracted_img = img[points[:, 1], points[:, 0], :]
-        extracted_img = np.reshape(extracted_img, (height, width, img.shape[2]))
-    else:
-        extracted_img = img[points[:, 1], points[:, 0]]
-        extracted_img = np.reshape(extracted_img, (height, width))
-        
-    return extracted_img
-             
+    def compute_corner_points(self):
+        points = np.array([[-1,1,1], [1,1,1], [1,-1,1], [-1,-1,1]])
+        aff_mat = create_affine_frame(self.center_x, self.center_y, self.theta, self.width, self.height)
+        corner_points = np.dot(aff_mat, points.T).T
+        corner_points = corner_points[:,:2].astype(int)
+        return corner_points
