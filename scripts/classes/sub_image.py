@@ -1,8 +1,8 @@
 import numpy as np
 import cv2 as cv
 from numpy.fft import fft, ifft, fftshift
-import matplotlib.pyplot as plt
-from functions import bindvec, findmaxpeak
+from matplotlib import pyplot as plt
+from functions.general import bindvec, findmaxpeak
 
 class sub_image:
     def __init__(self, image, boxradius, center):
