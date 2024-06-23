@@ -1,5 +1,6 @@
 import numpy as np
 import cv2 as cv
+from PIL import Image
 
 def flatten_mask_overlay(image, mask, alpha = 0.5):
     """
@@ -53,3 +54,28 @@ def dialate_skel(skel):
     dialated_skel = cv.dilate(skel, kernel)
 
     return dialated_skel
+
+def disp_rectangles(rect_list):
+    output_img = np.copy(rect_list[0].img)
+    width = (rect_list[0].width / 2).astype(int)
+        
+    for rect in rect_list:
+        points = rect.compute_corner_points()
+
+        if rect.flagged:
+            output_img = cv.polylines(output_img, [points], True, (0, 255, 0), 10)
+        else:
+            output_img = cv.polylines(output_img, [points], True, (255, 0, 0), 10)
+
+        if rect.ID is not None:
+            font = cv.FONT_HERSHEY_SIMPLEX
+            scale = 1.5
+            color = (255,255,255)
+            position = (rect.center_x - width, rect.center_y)
+            thickness = 5
+            txt = str(rect.ID)
+            output_img = cv.putText(output_img, txt, position, font, scale, color, thickness, cv.LINE_AA)
+        
+    output_img = Image.fromarray(output_img)
+
+    return output_img

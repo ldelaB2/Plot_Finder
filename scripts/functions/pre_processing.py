@@ -21,6 +21,7 @@ def set_params(param_path):
         exit()
     except:
         print("Unexpected error:", sys.exc_info()[0])
+        exit()
 
     # Check if all the default params are in the user params
     for param, default_value in default_params.items():
@@ -132,7 +133,7 @@ def create_g(img, params):
             pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2HSV)[:,:,0]
 
         else:
-            print("Invalid method")
+            print("Invalid Grayscale method")
             exit()
 
     # Normalize the pixel matrix

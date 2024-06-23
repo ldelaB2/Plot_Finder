@@ -1,15 +1,19 @@
 import os
 import numpy as np
 import cv2 as cv
+#from matplotlib import pyplot as plt
+from PIL import Image
+from functions.display import disp_rectangles
+
 import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
-from PIL import Image
 
 from functions.wavepad import filter_wavepad, trim_boarder, find_center_line, impute_skel
 from functions.image_processing import find_correct_sized_obj
-from functions.rectangle import correct_rect_range_row, build_rectangles, find_next_rect, find_edge_rect
-from classes.rectangles import rect_list
+from functions.rectangle import set_range_row, set_id, build_rectangles, find_next_rect, remove_rectangles
+
+from functions.optimization import build_rect_list, compute_model, compute_score
 
 
 class wavepad:
@@ -18,6 +22,7 @@ class wavepad:
         self.range_wavepad = range_wavepad
         self.row_wavepad = row_wavepad
         self.img = img
+
         self.phase_one() # Filtering the wavepads
         self.phase_two() # Finding the center lines and initial rectangles
         self.phase_three() # Finding the all rectangles
@@ -60,9 +65,9 @@ class wavepad:
         # Finding the initial rectangles
         initial_rect_list, initial_range_cnt, initial_row_cnt = build_rectangles(impute_range_skel, impute_row_skel)
         
-        # Creating the rectangle list object
-        self.initial_rect_list = rect_list(initial_rect_list, self.img, build_rectangles = True)
-        self.initial_rect_list.build_model() # Building the model
+        # Building the rect list and model
+        self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
+        self.initial_model = compute_model(self.initial_rect_list)
 
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
@@ -95,49 +100,37 @@ class wavepad:
     def add_rectangles(self, direction, num_2_add):
         for _ in range(num_2_add):
             # Find the next rectangles
-            min_list, max_list = find_next_rect(self.initial_rect_list, direction)
-
-            # Create the rectangle list object
-            min_list = rect_list(min_list, self.img, build_rectangles = False)
-            max_list = rect_list(max_list, self.img, build_rectangles = False)
-
-            # Adding the model from the initial rect list
-            min_list.model = self.initial_rect_list.model
-            max_list.model = self.initial_rect_list.model
+            min_list, max_list = find_next_rect(self.initial_rect_list, direction, edge = False)
 
             # Computing the scores
-            min_score = min_list.compute_score()
-            max_score = max_list.compute_score()
+            min_score = compute_score(min_list, self.initial_model)
+            max_score = compute_score(max_list, self.initial_model)
 
             # Adding the rectangles with min score
             if min_score >= max_score:
-                self.initial_rect_list.add_rectangles(max_list.rect_list)
+                for rect in max_list:
+                    self.initial_rect_list.append(rect)
             else:
-                self.initial_rect_list.add_rectangles(min_list.rect_list)
+                for rect in min_list:
+                    self.initial_rect_list.append(rect)
 
-        print(f"Added {num_2_add} rectangles in the {direction} direction")
+        print(f"Finished adding {num_2_add} {direction}(s)")
 
     def remove_rectangles(self, direction, num_2_remove):
         for _ in range(num_2_remove):
             # Find the current min, max rectangles
-            min_list, max_list = find_edge_rect(self.initial_rect_list, direction)
-
-            # Creating the rect list object
-            min_val_rect = rect_list(min_list, self.img, build_rectangles = False)
-            max_val_rect = rect_list(max_list, self.img, build_rectangles = False)
-            min_val_rect.model = self.initial_rect_list.model
-            max_val_rect.model = self.initial_rect_list.model
+            min_list, max_list = find_next_rect(self.initial_rect_list, direction, edge = True)
 
             # Computing the scores
-            min_score = min_val_rect.compute_score()
-            max_score = max_val_rect.compute_score()
+            min_score = compute_score(min_list, self.initial_model)
+            max_score = compute_score(max_list, self.initial_model)
 
             if min_score <= max_score:
-                self.initial_rect_list.remove_rectangles(min_val_rect.rect_list)
+                self.initial_rect_list = remove_rectangles(self.initial_rect_list, max_list)
             else:
-                self.initial_rect_list.remove_rectangles(max_val_rect.rect_list)
+                self.initial_rect_list = remove_rectangles(self.initial_rect_list, min_list)
         
-        print(f"Removed {num_2_remove} rectangles in the {direction} direction")
+        print(f"Finished removing {num_2_remove} {direction}(s)")
 
     def phase_four(self):
         # Checking in the row direction
@@ -179,6 +172,12 @@ class wavepad:
 
 
     def phase_five(self):
-        self.final_rect_list = correct_rect_range_row(self.initial_rect_list)
+        range_cnt = self.params["nranges"]
+        row_cnt = self.params["nrows"]
+
+        self.final_rect_list = set_range_row(self.initial_rect_list, range_cnt, row_cnt)
+        self.final_rect_list = set_id(self.final_rect_list, start = "TL", flow = "linear")
+
+        print("T")
     
     

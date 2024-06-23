@@ -3,12 +3,11 @@ import rasterio, os
 from functions.pre_processing import set_params, create_output_dirs
 from classes.find_plots import find_plots
 from classes.optimize_plots import optimize_plots
-import matplotlib.pyplot as plt
 
 class plot_finder_job:
     def __init__(self, params_path):
-        # Set Everything Up
         self.pre_process(params_path)
+        
     
     def pre_process(self, params_path):
         self.params = set_params(params_path)

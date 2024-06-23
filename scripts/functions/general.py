@@ -91,16 +91,23 @@ def find_consecutive_in_range(array, lower_bound, upper_bound, num_consecutive):
             count = 0
     
     print("No point found within window increasing bounds")
-    return find_consecutive_in_range(array, lower_bound * .2, upper_bound* 1.2, num_consecutive)
+    return find_consecutive_in_range(array, lower_bound * .8, upper_bound* 1.2, num_consecutive)
 
 def save_plots(self):
-        with multiprocessing.Pool(processes=self.params["num_cores"]) as pool:
-            pool.map(
-                save_plots_fun,
-                [(self.name, self.plots_path, rect, self.rgb_ortho) for rect in self.final_rect_list]
-                )
-        print("Finished Saving Plots")
+    def save_plots_fun(args):
+        img_name, plots_path, rect, img = args
+        name = f'{img_name}_{rect.range}_{rect.row}.jpg'
+        path = os.path.join(plots_path, name)
+        rect.save_rect(path, img)
         return
+
+    with multiprocessing.Pool(processes=self.params["num_cores"]) as pool:
+        pool.map(
+            save_plots_fun,
+            [(self.name, self.plots_path, rect, self.rgb_ortho) for rect in self.final_rect_list]
+            )
+    print("Finished Saving Plots")
+    return
         
 def create_shapefile(rect_list_obj, meta_data, inverse_rotation_matrix, file_name):
     poly_data = []
@@ -110,7 +117,10 @@ def create_shapefile(rect_list_obj, meta_data, inverse_rotation_matrix, file_nam
     for rect in rect_list_obj.rect_list:
         points = rect.compute_corner_points()
         points = np.column_stack((points, np.ones(points.shape[0])))
-        points = np.dot(inverse_rotation_matrix, points.T).T
+
+        if inverse_rotation_matrix is not None:
+            points = np.dot(inverse_rotation_matrix, points.T).T
+            
         points = original_aff * points.T
         points = tuple(zip(points[0], points[1]))
         temp_poly = Polygon(points)
@@ -121,8 +131,3 @@ def create_shapefile(rect_list_obj, meta_data, inverse_rotation_matrix, file_nam
     print("Finished Creating Shapefile")
 
 
-def save_plots_fun(args):
-    img_name, plots_path, rect, img = args
-    name = f'{img_name}_{rect.range}_{rect.row}.jpg'
-    path = os.path.join(plots_path, name)
-    rect.save_rect(path, img)

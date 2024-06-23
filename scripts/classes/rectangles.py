@@ -1,14 +1,11 @@
 
 import numpy as np
-import cv2 as cv
 from matplotlib import pyplot as plt
 
 from scipy.optimize import dual_annealing, Bounds
-from PIL import Image
 
 from deap import base, creator, tools, algorithms
 from pyswarm import pso
-from operator import itemgetter
 
 from functions.image_processing import create_unit_square, extract_rectangle
 from functions.rectangle import five_2_four_rect
@@ -25,85 +22,13 @@ class rect_list:
             self.width = rect_list[0].width
             self.height = rect_list[0].height
 
-    def build_rectangles(self):
-        self.width = np.mean(np.array(list(map(itemgetter(2), self.rect_list)))).astype(int)
-        self.height = np.mean(np.array(list(map(itemgetter(3), self.rect_list)))).astype(int)
-
-        for idx, rect in enumerate(self.rect_list):
-            rect[2] = self.width
-            rect[3] = self.height
-            self.rect_list[idx] = rectangle(rect)
-
-    def compute_score(self):
-        if self.model is None:
-            self.build_model()
-        score = 0
-        for rect in self.rect_list:
-            sub_image = rect.create_sub_image(self.img)
-            score += np.linalg.norm(sub_image - self.model)
-        
-        return score
-
-    def build_model(self):
-        if len(self.img.shape) == 2:
-            model = np.zeros((self.height, self.width))
-        else:
-            model = np.zeros((self.height, self.width, self.img.shape[2]))
-
-        for rect in self.rect_list:
-            sub_image = rect.create_sub_image(self.img)
-            model += sub_image
-
-        model = (model / len(self.rect_list)).astype(np.uint8)
-        self.model = model
-
-    def add_rectangles(self, rect_list):
-        for rect in rect_list:
-            self.rect_list.append(rect)
-
-    def remove_rectangles(self, rect_list):
-        remove_range = [rect.range for rect in rect_list]
-        remove_row = [rect.row for rect in rect_list]
-
-        current_range = [rect.range for rect in self.rect_list]
-        current_row = [rect.row for rect in self.rect_list]
-
-        remove_indx = np.where(np.isin(current_range, remove_range) & np.isin(current_row, remove_row))[0]
-        self.rect_list = [self.rect_list[indx] for indx in range(len(self.rect_list)) if indx not in remove_indx]
-
     def optimize_rectangles(self, param_dict):
         num_updated = 0
         for k in tqdm(range(len(self.rect_list)), desc = "Optimizing Rectangles"):
             opt_flag = self.rect_list[k].optomize_rectangle(self.img, self.model, param_dict)
             num_updated += opt_flag
         
-        print(f"Improved {num_updated}/{len(self.rect_list)} Rectangles")
-
-
-    def disp_rectangles(self):
-        output_img = np.copy(self.img)
-        width = (self.width / 2).astype(int)
-        
-        for rect in self.rect_list:
-            points = rect.compute_corner_points()
-
-            if rect.flagged:
-                output_img = cv.polylines(output_img, [points], True, (0, 255, 0), 10)
-            else:
-                output_img = cv.polylines(output_img, [points], True, (255, 0, 0), 10)
-
-            if rect.ID is not None:
-                font = cv.FONT_HERSHEY_SIMPLEX
-                scale = 1.5
-                color = (255,255,255)
-                position = (rect.center_x - width, rect.center_y)
-                thickness = 5
-                txt = str(rect.ID)
-                output_img = cv.putText(output_img, txt, position, font, scale, color, thickness, cv.LINE_AA)
-        
-        output_img = Image.fromarray(output_img)
-
-        return output_img
+        print(f"Improved {num_updated}/{len(self.rect_list)} Rectangles")  
 
 
 class rectangle:
@@ -113,8 +38,16 @@ class rectangle:
         self.width = rect[2]
         self.height = rect[3]
         self.theta = rect[4]
-        self.range = rect[5]
-        self.row = rect[6]
+
+        if len(rect) == 7:
+            self.range = rect[5]
+            self.row = rect[6]
+        else:
+            self.range = None
+            self.row = None
+
+        self.img = None
+        self.model = None
         self.flagged = False
         self.ID = None
         self.unit_sqr = None
@@ -141,16 +74,14 @@ class rectangle:
         plt.show()
         return fig, ax
     
-    def create_sub_image(self, img):
-        unit_sqr = create_unit_square(self.width, self.height)
-        sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, unit_sqr, img)
+    def create_sub_image(self):
+        sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, self.unit_sqr, self.img)
         return sub_image
     
     def compute_corner_points(self):
         points = (self.center_x, self.center_y, self.width, self.height, self.theta)
         corner_points = five_2_four_rect(points)
         return corner_points
-
   
     def optomize_rectangle(self, img, model, param_dict):
         x_radi = param_dict['x_radi']
@@ -240,10 +171,11 @@ class rectangle:
         elif method == 'SA':
             # Pull the parameters from the param_list
             mxiter = param_dict['maxiter']
+            reanneal_int = 20
 
             # Optomize the rectangle using simulated annealing
             bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
-            opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter)
+            opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter, reanneal_interval = reanneal_int)
             xopt = opt_solution.x
 
 

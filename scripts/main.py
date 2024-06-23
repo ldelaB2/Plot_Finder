@@ -1,4 +1,4 @@
-from plot_finder_job import plot_finder_job
+from classes.plot_finder_job import plot_finder_job
 
 def main(param_path):
     job = plot_finder_job(param_path)
