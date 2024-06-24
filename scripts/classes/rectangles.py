@@ -1,35 +1,12 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
-
 from scipy.optimize import dual_annealing, Bounds
-
 from deap import base, creator, tools, algorithms
 from pyswarm import pso
-
 from functions.image_processing import create_unit_square, extract_rectangle
 from functions.rectangle import five_2_four_rect
 import random
-from tqdm import tqdm
-
-class rect_list:
-    def __init__(self, rect_list, img, build_rectangles = True):
-        self.img = img
-        self.rect_list = rect_list
-        if build_rectangles:
-            self.build_rectangles()
-        else:
-            self.width = rect_list[0].width
-            self.height = rect_list[0].height
-
-    def optimize_rectangles(self, param_dict):
-        num_updated = 0
-        for k in tqdm(range(len(self.rect_list)), desc = "Optimizing Rectangles"):
-            opt_flag = self.rect_list[k].optomize_rectangle(self.img, self.model, param_dict)
-            num_updated += opt_flag
-        
-        print(f"Improved {num_updated}/{len(self.rect_list)} Rectangles")  
-
 
 class rectangle:
     def __init__(self, rect):

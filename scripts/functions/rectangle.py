@@ -21,7 +21,7 @@ def build_rectangles(range_skel, col_skel):
         top_points = top_points[np.argsort(top_points[:,1])]
         bottom_points = bottom_points[np.argsort(bottom_points[:,1])]
 
-        for k in range(top_points.shape[0] - 1):
+        for k in range(num_rows - 2):
             top_left = top_points[k,:]
             top_right = top_points[k + 1,:]
             bottom_left = bottom_points[k,:]
@@ -97,13 +97,15 @@ def find_next_rect(rect_list, direction, edge = False):
         if direction == 'range':
             tmp1_rect.center_y = tmp1_rect.center_y - delta
             tmp2_rect.center_y = tmp2_rect.center_y + delta
-            tmp1_rect.range = min_val - 1
-            tmp2_rect.range = max_val + 1
+            if not edge:
+                tmp1_rect.range = min_val - 1
+                tmp2_rect.range = max_val + 1
         elif direction == 'row':
             tmp1_rect.center_x = tmp1_rect.center_x - delta
             tmp2_rect.center_x = tmp2_rect.center_x + delta
-            tmp1_rect.row = min_val - 1
-            tmp2_rect.row = max_val + 1
+            if not edge:
+                tmp1_rect.row = min_val - 1
+                tmp2_rect.row = max_val + 1
 
         min_list.append(tmp1_rect)
         max_list.append(tmp2_rect)
@@ -126,24 +128,28 @@ def set_range_row(rect_list, num_ranges, num_rows):
     new_rows = np.zeros_like(rows)
     for i in range(num_rows):
         indx = np.where(rows == i)[0]
-        new_rows[indx] = row_ordered_indices[i]
+        new_indx = np.argwhere(row_ordered_indices == i)[0][0]
+        new_rows[indx] = new_indx
 
     # Make sure range clusters are in order
     range_centroids = range_cluster.cluster_centers_.flatten()
     range_ordered_indices = np.argsort(range_centroids)
     new_ranges = np.zeros_like(ranges)
     for i in range(num_ranges):
-        indxs = np.where(ranges == i)[0]
-        new_ranges[indxs] = range_ordered_indices[i]
+        indx = np.where(ranges == i)[0]
+        new_indx = np.argwhere(range_ordered_indices == i)[0][0]
+        new_ranges[indx] = new_indx
 
     # Set the range and row values for each rectangle
     for e, rect in enumerate(rect_list):
         rect.range = new_ranges[e]
         rect.row = new_rows[e]
+        rect.ID = f"{rect.range}_{rect.row}"
 
-    return rect_list
+    return
 
 def remove_rectangles(total_list, remove_list):
+
     remove_range = [rect.range for rect in remove_list]
     remove_row = [rect.row for rect in remove_list]
 
@@ -154,3 +160,70 @@ def remove_rectangles(total_list, remove_list):
     output = [total_list[indx] for indx in range(len(total_list)) if indx not in remove_indx]
 
     return output
+
+def set_id(rect_list, start, flow):
+    # Get all the ranges and rows
+    all_ranges = [rect.range for rect in rect_list]
+    all_rows = [rect.row for rect in rect_list]
+
+    # Get the unique ranges and rows
+    ranges = np.unique(all_ranges)
+    rows = np.unique(all_rows)
+
+    if start == "TR":
+        rows = np.flip(rows)
+    elif start == "BL":
+        ranges = np.flip(ranges)
+    elif start == "BR":
+        rows = np.flip(rows)
+        ranges = np.flip(ranges)
+    elif start == "TL":
+        pass
+    else:
+        print("Invalid Start Point for ID labeling")
+        return rect_list
+    
+    # Flip the rows for snake pattern
+    rows_flipped = np.flip(rows)
+    range_flip = np.zeros_like(ranges).astype(bool)
+    if flow == "linear":
+        pass
+    elif flow == "snake":
+        # Flip odd ranges to create a snake pattern
+        range_flip[1::2] = True
+    else:
+        print("Invalid Flow for ID labeling")
+        return rect_list
+    
+    cnt = 1
+    for idx, r in enumerate(ranges):
+        if range_flip[idx]:
+            tmp_rows = rows_flipped
+        else:
+            tmp_rows = rows
+
+        for e in tmp_rows:
+            indx = np.where((all_ranges == r) & (all_rows == e))[0][0]
+            rect_list[indx].ID = cnt
+            cnt += 1
+
+    return
+
+def check_within_img(min_list, max_list, img_shape):
+    min_center_x = np.mean([rect.center_x for rect in min_list])
+    max_center_x = np.mean([rect.center_x for rect in max_list])
+    min_center_y = np.mean([rect.center_y for rect in min_list])
+    max_center_y = np.mean([rect.center_y for rect in max_list])
+
+    min_score, max_score = 1, 1
+
+    if min_center_x < 0:
+        min_score = np.inf
+    if max_center_x > img_shape[1]:
+        max_score = np.inf
+    if min_center_y < 0:
+        min_score = np.inf
+    if max_center_y > img_shape[0]:
+        max_score = np.inf
+
+    return min_score, max_score

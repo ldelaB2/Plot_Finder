@@ -103,7 +103,7 @@ class find_plots():
     
     def phase_three(self):
         # Pass off to wavepad to find fft rectangles
-        fft_placement = wavepad(self.raw_range_wavepad, self.raw_row_wavepad, self.pf_job.params, self.img_ortho)
+        fft_placement = wavepad(self.raw_range_wavepad, self.raw_row_wavepad, self.pf_job.params, self.g_ortho)
         fft_rect_list = fft_placement.final_rect_list
         
         shp_path = os.path.join(self.pf_job.output_paths['shape_dir'], f"{self.pf_job.params['img_name']}_fft.gpkg")
