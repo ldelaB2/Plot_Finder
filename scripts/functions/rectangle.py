@@ -227,3 +227,55 @@ def check_within_img(min_list, max_list, img_shape):
         max_score = np.inf
 
     return min_score, max_score
+
+def compare_next_to_current(rect_list, model, direction):
+    # Find current edge
+    current_min, current_max = find_next_rect(rect_list, direction, edge = True)
+    # Find next set
+    next_min, next_max = find_next_rect(rect_list, direction, edge = False)
+    
+    # Compute the current scores
+    current_min_score = compute_score(current_min, model)
+    current_max_score = compute_score(current_max, model)
+
+    # Compute the next scores
+    next_max_score = compute_score(next_max, model)
+    next_min_score = compute_score(next_min, model)
+
+    # Check if the mean center is within the image for the next row
+    next_min_mult, next_max_mult = check_within_img(next_min, next_max, rect_list[0].img.shape)
+    next_max_score = next_max_score * next_max_mult
+    next_min_score = next_min_score * next_min_mult
+
+    # Compare the next scores
+    if next_min_score < next_max_score:
+        next_best_score = next_min_score
+        next_best_list = next_min
+    else:
+        next_best_score = next_max_score
+        new_best_list = next_max
+
+    # Compare the current scores
+    if current_min_score < current_max_score:
+        current_best_score = current_min_score
+        current_best_list = current_min
+    else:
+        current_best_score = current_max_score
+        current_best_list = current_max
+
+    # Compare the current and next scores
+    if next_best_score < current_best_score:
+        update_flag = True
+    else:
+        update_flag = False
+
+    return update_flag, new_best_list, current_best_list
+
+def compute_score(rect_list, model):
+    score = 0
+
+    for rect in rect_list:
+        subI = rect.create_sub_image()
+        score += np.linalg.norm(subI - model)
+
+    return score

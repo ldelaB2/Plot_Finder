@@ -40,12 +40,3 @@ def compute_model(rect_list):
     model = (model / len(rect_list)).astype(np.uint8)
 
     return model
-
-def compute_score(rect_list, model):
-    score = 0
-
-    for rect in rect_list:
-        subI = rect.create_sub_image()
-        score += np.linalg.norm(subI - model)
-
-    return score

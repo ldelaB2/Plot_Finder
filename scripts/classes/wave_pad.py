@@ -1,19 +1,12 @@
-import os
-import numpy as np
-import cv2 as cv
-#from matplotlib import pyplot as plt
-from PIL import Image
-from functions.display import disp_rectangles
-
 import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 
 from functions.wavepad import filter_wavepad, trim_boarder, find_center_line, impute_skel
 from functions.image_processing import find_correct_sized_obj
-from functions.rectangle import set_range_row, check_within_img, set_id, build_rectangles, find_next_rect, remove_rectangles
-
-from functions.optimization import build_rect_list, compute_model, compute_score
+from functions.rectangle import set_range_row, check_within_img, compute_score, compare_next_to_current, set_id, build_rectangles, find_next_rect, remove_rectangles
+from functions.optimization import build_rect_list, compute_model
+from functions.display import display_rectangles
 
 
 class wavepad:
@@ -26,7 +19,7 @@ class wavepad:
         self.phase_one() # Filtering the wavepads
         self.phase_two() # Finding the center lines and initial rectangles
         self.phase_three() # Finding the all rectangles
-        #self.phase_four() # Making sure we found the correct ranges/rows
+        self.phase_four() # Making sure we found the correct ranges/rows
         self.phase_five() # add labels
 
     def phase_one(self):
@@ -106,41 +99,27 @@ class wavepad:
         while row_flag or range_flag:
             if row_flag:
                 direction = "row"
-                # Find current row min, max and next row min, max
-                current_edge_min, current_edge_max = find_next_rect(self.initial_rect_list, direction, edge = True)
-                next_row_min, next_row_max = find_next_rect(self.initial_rect_list, direction, edge = False)
+                update_flag, next_best_list, current_best_list = compare_next_to_current(self.final_rect_list, self.initial_model, direction)
+                if update_flag:
+                    # Remove the current best list and add the next best list
+                    self.final_rect_list = remove_rectangles(self.final_rect_list, current_best_list)
+                    for rect in next_best_list:
+                        self.final_rect_list.append(rect)
+                else:
+                    row_flag = False
 
-            rect_list_to_test = [current_edge_min, current_edge_max, next_row_min, next_row_max]
-            scores = []
+            if range_flag:
+                direction = "range"
+                update_flag, next_best_list, current_best_list = compare_next_to_current(self.final_rect_list, self.initial_model, direction)
+                if update_flag:
+                    # Remove the current best list and add the next best list
+                    self.final_rect_list = remove_rectangles(self.final_rect_list, current_best_list)
+                    for rect in next_best_list:
+                        self.final_rect_list.append(rect)
+                else:
+                    range_flag = False
 
-            for tmp_list in rect_list_to_test:
-                tmp_list = rect_list(tmp_list, self.img, build_rectangles = False)
-                tmp_list.model = self.initial_rect_list.model
-                
-                param_dict = {}
-                param_dict['method'] = 'PSO'
-                param_dict['swarm_size'] = 20
-                param_dict['maxiter'] = 100
-                param_dict['x_radi'] = 20
-                param_dict['y_radi'] = 20
-                param_dict['theta_radi'] = 5
-
-                tmp_list.optimize_rectangles(param_dict)
-
-                tmp_list_score = tmp_list.compute_score()
-                scores.append(tmp_list_score)
-                
-            if scores[2] < scores[1]:
-                self.initial_rect_list.add_rectangles(next_row_min)
-                self.initial_rect_list.remove_rectangles(current_edge_max)
-            elif scores[3] < scores[0]:
-                self.initial_rect_list.add_rectangles(next_row_max)
-                self.initial_rect_list.remove_rectangles(current_edge_min)
-            else:
-                flag = False
-
-        print("Finished Double Checking Rows")
-
+        print("Finished Double Checking for Correct Ranges and Rows")
 
     def phase_five(self):
         # Pulling the params
@@ -167,23 +146,6 @@ class wavepad:
             min_mult, max_mult = check_within_img(min_list, max_list, self.img.shape)
             min_score = min_score * min_mult
             max_score = max_score * max_mult
-            """
-            # Check that mean center is within the image
-            if direction == "row":
-                mean_center_x_min = np.mean([rect.center_x for rect in min_list])
-                if mean_center_x_min < 0:
-                    min_score = np.inf
-                mean_center_x_max = np.mean([rect.center_x for rect in max_list])
-                if mean_center_x_max > self.img.shape[1]:
-                    max_score = np.inf
-            elif direction == "range":
-                mean_center_y_min = np.mean([rect.center_y for rect in min_list])
-                if mean_center_y_min < 0:
-                    min_score = np.inf
-                mean_center_y_max = np.mean([rect.center_y for rect in max_list])
-                if mean_center_y_max > self.img.shape[0]:
-                    max_score = np.inf
-            """
 
             # Adding the rectangles with min score
             if min_score >= max_score:
