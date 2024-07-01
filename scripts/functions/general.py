@@ -130,4 +130,33 @@ def create_shapefile(rect_list, meta_data, inverse_rotation_matrix, file_name):
     gdf.to_file(file_name, driver="GPKG")
     print("Finished Creating Shapefile")
 
+def minimize_quadratic(x, y, lower_bound, upper_bound):
+    # Find the coefficients of the quadratic
+    coeff = np.polyfit(x, y, 2)
+    # Create the quadratic function
+    quadratic = np.poly1d(coeff)
+    # Compute the first derivative of the quadratic
+    first_derivative = np.polyder(quadratic)
+    # Compute the second derivative
+    second_derivative = np.roots(first_derivative)
 
+    # If the second derivitive is negative we know it is concave down
+    if second_derivative < 0:
+        # Check the bounds of the quadratic
+        lower_y = quadratic(lower_bound)
+        upper_y = quadratic(upper_bound)
+
+        if lower_y < upper_y:
+            return lower_bound
+        else:
+            return upper_bound
+    else:
+        # Find the critical point
+        root = np.roots(first_derivative)[0]
+        if root >= lower_bound and root <= upper_bound:
+            return root
+        elif root < lower_bound:
+            return lower_bound
+        else:
+            return upper_bound
+        

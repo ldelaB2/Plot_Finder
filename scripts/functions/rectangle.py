@@ -4,6 +4,7 @@ from functions.display import dialate_skel
 from functions.image_processing import create_affine_frame
 import copy
 from sklearn.cluster import KMeans
+from skimage.metrics import structural_similarity as ssim
 
 def build_rectangles(range_skel, col_skel):
     num_ranges, ld_range, _, _ = cv.connectedComponentsWithStats(dialate_skel(range_skel))
@@ -235,12 +236,12 @@ def compare_next_to_current(rect_list, model, direction):
     next_min, next_max = find_next_rect(rect_list, direction, edge = False)
     
     # Compute the current scores
-    current_min_score = compute_score(current_min, model, method = "cosine")
-    current_max_score = compute_score(current_max, model, method = "cosine")
+    current_min_score = compute_score_list(current_min, model, method = "SSIM")
+    current_max_score = compute_score_list(current_max, model, method = "SSIM")
 
     # Compute the next scores
-    next_max_score = compute_score(next_max, model, method = "cosine")
-    next_min_score = compute_score(next_min, model, method = "cosine")
+    next_max_score = compute_score_list(next_max, model, method = "SSIM")
+    next_min_score = compute_score_list(next_min, model, method = "SSIM")
 
     # Check if the mean center is within the image for the next row
     next_min_mult, next_max_mult = check_within_img(next_min, next_max, rect_list[0].img.shape)
@@ -266,34 +267,37 @@ def compare_next_to_current(rect_list, model, direction):
 
     return update_flag, add_list, drop_list
 
-def compute_score(rect_list, model, method = "euclidean"):
-    scores = []
-
+def compute_score(img, model, method = "euclidean"):
     if method == "cosine":
+        img_vec = img.flatten()
+        img_norm = np.linalg.norm(img_vec)
         model_vec = model.flatten()
         model_norm = np.linalg.norm(model_vec)
 
-        for rect in rect_list:
-            subI = rect.create_sub_image()
-            img_vec = subI.flatten()
-            img_norm = np.linalg.norm(img_vec)
-
-            if img_norm == 0:
-                print("Zero norm image")
-                scores.append(np.inf)
-            else:
-                cosine_similarity = np.dot(model_vec, img_vec) / (model_norm * img_norm)
-                scores.append(cosine_similarity)
+        if img_norm == 0:
+            print("Zero norm image")
+            return np.inf
+        else:
+            cosine_similarity = np.dot(model_vec, img_vec) / (model_norm * img_norm)
+            return cosine_similarity
 
     elif method == "euclidean":
-        for rect in rect_list:
-            subI = rect.create_sub_image()
-            scores.append(np.linalg.norm(subI - model))
+        return np.linalg.norm(img - model)
+    
+    elif method == "SSIM":
+        score, diff = ssim(img, model, full = True)
+        return score
 
     else:
         print("Invalid method for computing score")
         return
-    
+
+def compute_score_list(rect_list, model, method = "euclidean"):
+    scores = []
+    for rect in rect_list:
+        tmp_score = compute_score(rect.create_sub_image(), model, method)
+        scores.append(tmp_score)
+
     final_score = np.median(scores)
 
     return final_score

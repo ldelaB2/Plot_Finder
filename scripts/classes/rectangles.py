@@ -5,8 +5,9 @@ from scipy.optimize import dual_annealing, Bounds
 from deap import base, creator, tools, algorithms
 from pyswarm import pso
 from functions.image_processing import create_unit_square, extract_rectangle
-from functions.rectangle import five_2_four_rect
+from functions.rectangle import five_2_four_rect, compute_score
 from functions.display import disp_flow
+from functions.general import minimize_quadratic
 import random
 import cv2 as cv
 
@@ -72,65 +73,99 @@ class rectangle:
         return new_img
 
 
-
     def optomize_rectangle(self, model, param_dict):
-        x_radi = param_dict['x_radi']
-        y_radi = param_dict['y_radi']
-        theta_radi = param_dict['theta_radi']
         method = param_dict['method']
 
-        num_points = 10
+        if self.flagged == True:
+            update_flag = False
+        
+        else:
+            if method == 'PSO':
+                update_flag = self.optomize_rectangle_pso(model, param_dict)
+            elif method == 'GA':
+                update_flag = self.optomize_rectangle_ga(model, param_dict)
+            elif method == 'SA':
+                update_flag = self.optomize_rectangle_sa(model, param_dict)
+            elif method == 'feature':
+                update_flag = self.optomize_rectangle_feature(model, param_dict)
+            else:
+                print("Optimization method not recognized")
+        return update_flag
+    
+    def optomize_rectangle_feature(self, model, param_dict):
+        
+        x_radi = param_dict['x_radi']
+        y_radi = param_dict['y_radi']
+        num_features = param_dict['feature_num_features']
+        num_points = param_dict['feature_num_points']
+        quality = param_dict['feature_quality']
+        min_dist = param_dict['feature_min_dist']
+        block_size = param_dict['feature_block_size']
+        update_flag = False
+        
+        # Create the feature params
+        feature_params = dict(maxCorners = num_features,
+                              qualityLevel = quality,
+                              minDistance = min_dist,
+                              blockSize = block_size)
+        
+        # Compute the X offset feature positions
         x_test = np.round(np.linspace(-x_radi, x_radi, num_points)).astype(int)
-        img_1 = self.create_sub_image()
-        
-        x_angle = []
-        x_mag = []
-        x_hort = []
-
+        avg_x_dist = []
+        width_center = np.round(self.width / 2).astype(int)
         for x_val in x_test:
-            img_2 = self.move_rectangle(x_val, 0, 0)
+            new_img = self.move_rectangle(x_val, 0, 0)
+
+            if np.median(new_img) == 0:
+                distance = np.inf
+            else:
+                p0 = cv.goodFeaturesToTrack(new_img, mask = None, **feature_params)
+                center_x = np.mean(p0, axis = 0)[0][0]
+                distance = np.abs(center_x - width_center)
+            avg_x_dist.append(distance)
+
+        # Find the best x offset
+        best_x_offset = minimize_quadratic(x_test, avg_x_dist, -x_radi, x_radi)
+        best_x_offset = np.round(best_x_offset).astype(int)
         
-            # Set the parameters for the Farneback method
-            pyr_scale = 0.5  # Scale between image pyramids
-            levels = 7       # Number of pyramid levels
-            winsize = 20     # Size of the window for averaging
-            iterations = 7   # Number of iterations at each pyramid level
-            poly_n = 7       # Size of the pixel neighborhood
-            poly_sigma = 1.5 # Standard deviation of the Gaussian
-            flags = 0        # Flags for the algorithm
+        # Compare the current score to the new score
+        current_score = compute_score(self.create_sub_image(), model, method = 'euclidean')
+        new_score = compute_score(self.move_rectangle(best_x_offset, 0, 0), model, method = 'euclidean')
 
-            # Compute optical flow using Farneback method
-            flow = cv.calcOpticalFlowFarneback(img_1, img_2, None, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, flags)
+        # Update the rectangle if the new score is better
+        if new_score < current_score:
+            self.center_x = self.center_x + best_x_offset
+            update_flag = True
 
-            # Compute the average flow vector
-            avg_flow = np.mean(flow, axis=(0, 1))
-            avg_hort_flow = np.mean(flow[:,:,0])
+        # Compute the Y offset feature positions
+        y_test = np.round(np.linspace(-y_radi, y_radi, num_points)).astype(int)
+        avg_y_dist = []
+        height_center = np.round(self.height / 2).astype(int)
+        for y_val in y_test:
+            new_img = self.move_rectangle(0, y_val, 0)
 
-            # Compute the magnitude and angle of the average flow vector
-            magnitude = np.sqrt(avg_flow[0]**2 + avg_flow[1]**2)
-            angle = np.arctan2(avg_flow[1], avg_flow[0]) * 180 / np.pi 
+            if np.median(new_img) == 0:
+                distance = np.inf
+            else:
+                p0 = cv.goodFeaturesToTrack(new_img, mask = None, **feature_params)
+                center_y = np.mean(p0, axis = 0)[0][1]
+                distance = np.abs(center_y - height_center)
+            avg_y_dist.append(distance)
 
-            x_angle.append(angle)
-            x_mag.append(magnitude)
-            x_hort.append(avg_hort_flow) 
+        # Find the best y offset
+        best_y_offset = minimize_quadratic(y_test, avg_y_dist, -y_radi, y_radi)
+        best_y_offset = np.round(best_y_offset).astype(int)
 
+        # Compare the current score to the new score
+        current_score = compute_score(self.create_sub_image(), model, method = 'euclidean')
+        new_score = compute_score(self.move_rectangle(0, best_y_offset, 0), model, method = 'euclidean')
 
-        # Create a figure with two subplots
-        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        # Update the rectangle if the new score is better
+        if new_score < current_score:
+            self.center_y = self.center_y + best_y_offset
+            update_flag = True
 
-        # Plot the first image in the first subplot
-        axs[0].imshow(img_1)
-        axs[0].set_title('Image 1')
-        axs[0].axis('off')  # Hide the axes
-
-        # Plot the second image in the second subplot
-        axs[1].imshow(img_1)
-        axs[1].set_title('Image 2')
-        axs[1].axis('off')  # Hide the axes
-
-        # Display the plot
-        plt.show()
-
+        return update_flag
 
 
 

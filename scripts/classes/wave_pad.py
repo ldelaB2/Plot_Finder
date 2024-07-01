@@ -4,9 +4,10 @@ from matplotlib import pyplot as plt
 
 from functions.wavepad import filter_wavepad, trim_boarder, find_center_line, impute_skel
 from functions.image_processing import find_correct_sized_obj
-from functions.rectangle import set_range_row, check_within_img, compute_score, compare_next_to_current, set_id, build_rectangles, find_next_rect, remove_rectangles
-from functions.optimization import build_rect_list, compute_model
+from functions.rectangle import set_range_row, check_within_img, compute_score_list, compare_next_to_current, set_id, build_rectangles, find_next_rect, remove_rectangles
+from functions.optimization import build_rect_list, compute_model, optimize_list
 from functions.display import disp_rectangles
+import numpy as np
 
 
 class wavepad:
@@ -61,7 +62,9 @@ class wavepad:
         # Building the rect list and model
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
         self.initial_model = compute_model(self.initial_rect_list)
-        self.phase_six()
+        
+        # Optimize initial rectangles
+        self.sparse_optimize(self.initial_rect_list, self.initial_model, recompute_model = True, txt = "Initial Sparse Optimization")
 
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
@@ -143,31 +146,55 @@ class wavepad:
         print("Finished Adding Labels")
 
 
-    def phase_six(self):
+    def sparse_optimize(self, rect_list, model, txt = "Sparse Optimization", recompute_model = False):
         opt_param_dict = {}
-        opt_param_dict['method'] = 'SA'
-        opt_param_dict['x_radi'] = 20
-        opt_param_dict['y_radi'] = 20
-        opt_param_dict['theta_radi'] = 5
-        opt_param_dict['maxiter'] = 100
+        opt_param_dict['method'] = 'feature'
+        opt_param_dict['x_radi'] = 10
+        opt_param_dict['y_radi'] = 10
+        opt_param_dict['feature_num_features'] = 100
+        opt_param_dict['feature_num_points'] = 10
+        opt_param_dict['feature_quality'] = .1
+        opt_param_dict['feature_min_dist'] = 7
+        opt_param_dict['feature_block_size'] = 7
 
-        print("T")
-        self.initial_rect_list[1].optomize_rectangle(self.initial_model, opt_param_dict)
-        print("T")
+
+        # Optimize the rectangles
+        optimize_list(rect_list, model, opt_param_dict, txt)
+        
+        if recompute_model:
+            self.initial_model = compute_model(rect_list)
+            print("Recomputed Model")
 
     def add_rectangles(self, direction, num_2_add):
-        for _ in range(num_2_add):
+        for cnt in range(num_2_add):
             # Find the next rectangles
             min_list, max_list = find_next_rect(self.initial_rect_list, direction, edge = False)
 
-            # Computing the scores
-            min_score = compute_score(min_list, self.initial_model)
-            max_score = compute_score(max_list, self.initial_model)
-
-            # Check that mean center is within the image
+            # Check to make sure the rectangles are within the image
             min_mult, max_mult = check_within_img(min_list, max_list, self.img.shape)
-            min_score = min_score * min_mult
-            max_score = max_score * max_mult
+
+            if min_mult != np.inf:
+                # Optimize the rectangles
+                self.sparse_optimize(min_list, self.initial_model, txt = f"Sparse Optimization Add Min {direction} {cnt + 1}/{num_2_add}")
+                # Compute the score
+                min_score = compute_score_list(min_list, self.initial_model)
+                # Multiply the score by the multiplier
+                min_score = min_score * min_mult
+            else:
+                min_score = np.inf
+                print("Min Rectangles are out of bounds")
+
+            if max_mult != np.inf:
+                # Optimize the rectangles
+                self.sparse_optimize(max_list, self.initial_model, txt = f"Sparse Optimization Add Max {direction} {cnt + 1}/{num_2_add}")
+                # Compute the score
+                max_score = compute_score_list(max_list, self.initial_model)
+                # Multiply the score by the multiplier
+                max_score = max_score * max_mult
+            else:
+                max_score = np.inf
+                print("Max Rectangles are out of bounds")
+ 
 
             # Adding the rectangles with min score
             if min_score >= max_score:
@@ -185,8 +212,8 @@ class wavepad:
             min_list, max_list = find_next_rect(self.initial_rect_list, direction, edge = True)
 
             # Computing the scores
-            min_score = compute_score(min_list, self.initial_model)
-            max_score = compute_score(max_list, self.initial_model)
+            min_score = compute_score_list(min_list, self.initial_model)
+            max_score = compute_score_list(max_list, self.initial_model)
 
             if min_score <= max_score:
                 self.initial_rect_list = remove_rectangles(self.initial_rect_list, max_list)
