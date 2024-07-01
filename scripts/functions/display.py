@@ -79,3 +79,18 @@ def disp_rectangles(rect_list):
     output_img = Image.fromarray(output_img)
 
     return output_img
+
+# Optionally, visualize the flow
+def disp_flow(img, flow, step=16):
+    h, w = img.shape[:2]
+    y, x = np.mgrid[step/2:h:step, step/2:w:step].reshape(2, -1).astype(int)
+    fx, fy = flow[y, x].T
+
+    lines = np.vstack([x, y, x + fx, y + fy]).T.reshape(-1, 2, 2)
+    lines = np.int32(lines + 0.5)
+
+    vis = img.copy()
+    for (x1, y1), (x2, y2) in lines:
+        cv.line(vis, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        cv.circle(vis, (x1, y1), 1, (0, 255, 0), -1)
+    return vis

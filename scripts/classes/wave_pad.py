@@ -6,7 +6,7 @@ from functions.wavepad import filter_wavepad, trim_boarder, find_center_line, im
 from functions.image_processing import find_correct_sized_obj
 from functions.rectangle import set_range_row, check_within_img, compute_score, compare_next_to_current, set_id, build_rectangles, find_next_rect, remove_rectangles
 from functions.optimization import build_rect_list, compute_model
-from functions.display import display_rectangles
+from functions.display import disp_rectangles
 
 
 class wavepad:
@@ -61,6 +61,7 @@ class wavepad:
         # Building the rect list and model
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
         self.initial_model = compute_model(self.initial_rect_list)
+        self.phase_six()
 
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
@@ -95,6 +96,8 @@ class wavepad:
         # Checking to make sure we found the correct ranges and rows
         row_flag = True
         range_flag = True
+        range_cnt = 0
+        row_cnt = 0
 
         while row_flag or range_flag:
             if row_flag:
@@ -105,6 +108,8 @@ class wavepad:
                     self.final_rect_list = remove_rectangles(self.final_rect_list, current_best_list)
                     for rect in next_best_list:
                         self.final_rect_list.append(rect)
+
+                    row_cnt += 1
                 else:
                     row_flag = False
 
@@ -116,22 +121,39 @@ class wavepad:
                     self.final_rect_list = remove_rectangles(self.final_rect_list, current_best_list)
                     for rect in next_best_list:
                         self.final_rect_list.append(rect)
+
+                    range_cnt += 1
                 else:
                     range_flag = False
-
-        print("Finished Double Checking for Correct Ranges and Rows")
+        
+        print(f"Shifted {row_cnt} row(s) and {range_cnt} range(s) on double check")
 
     def phase_five(self):
         # Pulling the params
         range_cnt = self.params["nranges"]
         row_cnt = self.params["nrows"]
+        label_start = self.params["label_start"]
+        label_flow = self.params["label_flow"]
 
         # Setting the range and row
         set_range_row(self.final_rect_list, range_cnt, row_cnt)
         # Setting the id
-        set_id(self.final_rect_list, start = "TL", flow = "snake")
+        set_id(self.final_rect_list, start = label_start, flow = label_flow)
         
         print("Finished Adding Labels")
+
+
+    def phase_six(self):
+        opt_param_dict = {}
+        opt_param_dict['method'] = 'SA'
+        opt_param_dict['x_radi'] = 20
+        opt_param_dict['y_radi'] = 20
+        opt_param_dict['theta_radi'] = 5
+        opt_param_dict['maxiter'] = 100
+
+        print("T")
+        self.initial_rect_list[1].optomize_rectangle(self.initial_model, opt_param_dict)
+        print("T")
 
     def add_rectangles(self, direction, num_2_add):
         for _ in range(num_2_add):

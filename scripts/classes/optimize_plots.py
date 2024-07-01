@@ -2,8 +2,10 @@ import numpy as np
 import cv2 as cv
 import geopandas as gpd
 from matplotlib import pyplot as plt
-from classes.rectangles import rectangle
 from functions.rectangle import four_2_five_rect
+from functions.optimization import build_rect_list
+from functions.rectangle import set_range_row, set_id
+from functions.display import disp_rectangles
 
 class optimize_plots:
     def __init__(self, plot_finder_job):
@@ -12,14 +14,21 @@ class optimize_plots:
         self.phase_one()
 
     def pre_process(self):
-        # Loading in the shapefile
-        gdf = gpd.read_file(self.pf_job.params['shapefile_path'])
-
-        # Converting to the same crs as the image
+        # Pull the params
+        nrows = self.pf_job.params['nrows']
+        nranges = self.pf_job.params['nranges']
+        label_start = self.pf_job.params["label_start"]
+        label_flow = self.pf_job.params["label_flow"]
+        shp_path = self.pf_job.params['shapefile_path']
         crs = self.pf_job.meta_data['crs']
-        gdf = gdf.to_crs(crs)
         transform = self.pf_job.meta_data['transform']
 
+        # Loading in the shapefile
+        gdf = gpd.read_file(shp_path)
+
+        # Converting to the same crs as the image
+        gdf = gdf.to_crs(crs)
+        
         # Looping through the shapefile
         rect_coords = []
 
@@ -55,8 +64,11 @@ class optimize_plots:
             rect_coords.append(rect)
 
         # Creating the rect list
-        self.rect_list = rect_coords
-        #self.rect_list = rect_list(rect_coords, self.pf_job.img_ortho, build_rectangles = True)
+        self.rect_list = build_rect_list(rect_coords, self.pf_job.img_ortho)
+        set_range_row(self.rect_list, nranges, nrows)
+        set_id(self.rect_list, label_start, label_flow)
+        print("T")
+
        
     
     def phase_one(self):

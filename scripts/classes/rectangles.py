@@ -6,7 +6,9 @@ from deap import base, creator, tools, algorithms
 from pyswarm import pso
 from functions.image_processing import create_unit_square, extract_rectangle
 from functions.rectangle import five_2_four_rect
+from functions.display import disp_flow
 import random
+import cv2 as cv
 
 class rectangle:
     def __init__(self, rect):
@@ -60,11 +62,80 @@ class rectangle:
         corner_points = five_2_four_rect(points)
         return corner_points
   
-    def optomize_rectangle(self, img, model, param_dict):
+    def move_rectangle(self, dX, dY, dT):
+        center_x = self.center_x + dX
+        center_y = self.center_y + dY
+        theta = self.theta + dT
+        
+        new_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, self.unit_sqr, self.img)
+        
+        return new_img
+
+
+
+    def optomize_rectangle(self, model, param_dict):
         x_radi = param_dict['x_radi']
         y_radi = param_dict['y_radi']
         theta_radi = param_dict['theta_radi']
         method = param_dict['method']
+
+        num_points = 10
+        x_test = np.round(np.linspace(-x_radi, x_radi, num_points)).astype(int)
+        img_1 = self.create_sub_image()
+        
+        x_angle = []
+        x_mag = []
+        x_hort = []
+
+        for x_val in x_test:
+            img_2 = self.move_rectangle(x_val, 0, 0)
+        
+            # Set the parameters for the Farneback method
+            pyr_scale = 0.5  # Scale between image pyramids
+            levels = 7       # Number of pyramid levels
+            winsize = 20     # Size of the window for averaging
+            iterations = 7   # Number of iterations at each pyramid level
+            poly_n = 7       # Size of the pixel neighborhood
+            poly_sigma = 1.5 # Standard deviation of the Gaussian
+            flags = 0        # Flags for the algorithm
+
+            # Compute optical flow using Farneback method
+            flow = cv.calcOpticalFlowFarneback(img_1, img_2, None, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, flags)
+
+            # Compute the average flow vector
+            avg_flow = np.mean(flow, axis=(0, 1))
+            avg_hort_flow = np.mean(flow[:,:,0])
+
+            # Compute the magnitude and angle of the average flow vector
+            magnitude = np.sqrt(avg_flow[0]**2 + avg_flow[1]**2)
+            angle = np.arctan2(avg_flow[1], avg_flow[0]) * 180 / np.pi 
+
+            x_angle.append(angle)
+            x_mag.append(magnitude)
+            x_hort.append(avg_hort_flow) 
+
+
+        # Create a figure with two subplots
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+
+        # Plot the first image in the first subplot
+        axs[0].imshow(img_1)
+        axs[0].set_title('Image 1')
+        axs[0].axis('off')  # Hide the axes
+
+        # Plot the second image in the second subplot
+        axs[1].imshow(img_1)
+        axs[1].set_title('Image 2')
+        axs[1].axis('off')  # Hide the axes
+
+        # Display the plot
+        plt.show()
+
+
+
+
+
+        """
 
         # Create objective function
         unit_sqr = create_unit_square(self.width, self.height)
@@ -76,7 +147,7 @@ class rectangle:
             center_y = self.center_y + dY
             theta = self.theta + dTheta
             
-            sub_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, unit_sqr, img)
+            sub_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, self.unit_sqr, self.img)
             dist = np.linalg.norm(sub_img - model)
             return dist
     
@@ -174,6 +245,8 @@ class rectangle:
             cnt = 0
 
         return cnt
+
+        """
 
          
 

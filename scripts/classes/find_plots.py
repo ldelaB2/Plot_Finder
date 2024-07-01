@@ -115,7 +115,6 @@ class find_plots():
         print("Finished FFT Rectangle Placement")
 
 
-
 def create_phase2_mask(signal, num_sig_returned):
         ssig = np.argsort(signal)[::-1]
         freq_index = ssig[:num_sig_returned]

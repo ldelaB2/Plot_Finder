@@ -5,7 +5,7 @@
     "nrows": null,
     "nranges": null,
     "label_start": "TL",
-    "label_flow": "L",
+    "label_flow": "snake",
     
     "custom_grayscale": false,
     "gray_scale_method": "LAB",

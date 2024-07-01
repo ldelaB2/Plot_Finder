@@ -109,12 +109,12 @@ def save_plots(self):
     print("Finished Saving Plots")
     return
         
-def create_shapefile(rect_list_obj, meta_data, inverse_rotation_matrix, file_name):
+def create_shapefile(rect_list, meta_data, inverse_rotation_matrix, file_name):
     poly_data = []
     original_aff = meta_data['transform']
     original_crs = meta_data['crs']
 
-    for rect in rect_list_obj.rect_list:
+    for rect in rect_list:
         points = rect.compute_corner_points()
         points = np.column_stack((points, np.ones(points.shape[0])))
 

@@ -235,47 +235,65 @@ def compare_next_to_current(rect_list, model, direction):
     next_min, next_max = find_next_rect(rect_list, direction, edge = False)
     
     # Compute the current scores
-    current_min_score = compute_score(current_min, model)
-    current_max_score = compute_score(current_max, model)
+    current_min_score = compute_score(current_min, model, method = "cosine")
+    current_max_score = compute_score(current_max, model, method = "cosine")
 
     # Compute the next scores
-    next_max_score = compute_score(next_max, model)
-    next_min_score = compute_score(next_min, model)
+    next_max_score = compute_score(next_max, model, method = "cosine")
+    next_min_score = compute_score(next_min, model, method = "cosine")
 
     # Check if the mean center is within the image for the next row
     next_min_mult, next_max_mult = check_within_img(next_min, next_max, rect_list[0].img.shape)
     next_max_score = next_max_score * next_max_mult
     next_min_score = next_min_score * next_min_mult
 
-    # Compare the next scores
-    if next_min_score < next_max_score:
-        next_best_score = next_min_score
-        next_best_list = next_min
-    else:
-        next_best_score = next_max_score
-        new_best_list = next_max
-
-    # Compare the current scores
-    if current_min_score < current_max_score:
-        current_best_score = current_min_score
-        current_best_list = current_min
-    else:
-        current_best_score = current_max_score
-        current_best_list = current_max
-
-    # Compare the current and next scores
-    if next_best_score < current_best_score:
+    # Compare the next min to current max
+    if next_min_score < current_max_score:
+        drop_list = current_max
+        add_list = next_min
         update_flag = True
+
+    # Compare next max to current min
+    elif next_max_score < current_min_score:
+        drop_list = current_min
+        add_list = next_max
+        update_flag = True
+
     else:
         update_flag = False
+        add_list = []
+        drop_list = []
 
-    return update_flag, new_best_list, current_best_list
+    return update_flag, add_list, drop_list
 
-def compute_score(rect_list, model):
-    score = 0
+def compute_score(rect_list, model, method = "euclidean"):
+    scores = []
 
-    for rect in rect_list:
-        subI = rect.create_sub_image()
-        score += np.linalg.norm(subI - model)
+    if method == "cosine":
+        model_vec = model.flatten()
+        model_norm = np.linalg.norm(model_vec)
 
-    return score
+        for rect in rect_list:
+            subI = rect.create_sub_image()
+            img_vec = subI.flatten()
+            img_norm = np.linalg.norm(img_vec)
+
+            if img_norm == 0:
+                print("Zero norm image")
+                scores.append(np.inf)
+            else:
+                cosine_similarity = np.dot(model_vec, img_vec) / (model_norm * img_norm)
+                scores.append(cosine_similarity)
+
+    elif method == "euclidean":
+        for rect in rect_list:
+            subI = rect.create_sub_image()
+            scores.append(np.linalg.norm(subI - model))
+
+    else:
+        print("Invalid method for computing score")
+        return
+    
+    final_score = np.median(scores)
+
+    return final_score
