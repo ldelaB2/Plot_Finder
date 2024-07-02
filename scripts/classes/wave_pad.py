@@ -61,10 +61,10 @@ class wavepad:
         
         # Building the rect list and model
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
-        self.initial_model = compute_model(self.initial_rect_list)
+        self.initial_model = compute_model(self.initial_rect_list, initial= True)
         
         # Optimize initial rectangles
-        self.sparse_optimize(self.initial_rect_list, self.initial_model, recompute_model = True, txt = "Initial Sparse Optimization")
+        self.sparse_optimize(self.initial_rect_list, self.initial_model, epoch = 3, recompute_model = True, txt = "Initial Optimization")
 
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
@@ -76,19 +76,23 @@ class wavepad:
         if self.rows_2_find == 0 and self.ranges_2_find == 0:
             print("All plots found from FFT")
 
-        # Finding the correct number of ranges
+        # Remove ranges
         if self.ranges_2_find < 0:
             print(f"Removing {abs(self.ranges_2_find)} extra range(s) from FFT")
             self.remove_rectangles("range", abs(self.ranges_2_find))
-        else:
-            print(f"Finding {self.ranges_2_find} missing range(s) from FFT")
-            self.add_rectangles("range", self.ranges_2_find)
-        
-        # Finding the correct number of rows
+
+        # Remove rows
         if self.rows_2_find < 0:
             print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
             self.remove_rectangles("row", abs(self.rows_2_find))
-        else:
+        
+        # Add ranges
+        if self.ranges_2_find > 0:
+            print(f"Finding {self.ranges_2_find} missing range(s) from FFT")
+            self.add_rectangles("range", self.ranges_2_find)
+        
+        # Add rows
+        if self.rows_2_find > 0:
             print(f"Finding {self.rows_2_find} missing row(s) from FFT")
             self.add_rectangles("row", self.rows_2_find)
 
@@ -146,24 +150,22 @@ class wavepad:
         print("Finished Adding Labels")
 
 
-    def sparse_optimize(self, rect_list, model, txt = "Sparse Optimization", recompute_model = False):
+    def sparse_optimize(self, rect_list, model, epoch, txt = "Sparse Optimization", recompute_model = False):
         opt_param_dict = {}
-        opt_param_dict['method'] = 'feature'
+        opt_param_dict['method'] = 'quadratic'
         opt_param_dict['x_radi'] = 10
         opt_param_dict['y_radi'] = 10
-        opt_param_dict['feature_num_features'] = 100
-        opt_param_dict['feature_num_points'] = 10
-        opt_param_dict['feature_quality'] = .1
-        opt_param_dict['feature_min_dist'] = 7
-        opt_param_dict['feature_block_size'] = 7
+        opt_param_dict['quadratic_num_points'] = 15
+        opt_param_dict['optimization_loss'] = 'euclidean'
+        opt_param_dict['epoch'] = epoch
 
-
-        # Optimize the rectangles
-        optimize_list(rect_list, model, opt_param_dict, txt)
-        
+        optimize_list(rect_list, model, opt_param_dict, txt = txt)
+            
         if recompute_model:
-            self.initial_model = compute_model(rect_list)
+            model = compute_model(rect_list)
             print("Recomputed Model")
+
+        return
 
     def add_rectangles(self, direction, num_2_add):
         for cnt in range(num_2_add):

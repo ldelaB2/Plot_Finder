@@ -32,8 +32,8 @@ class rectangle:
         self.ID = None
         self.unit_sqr = None
 
-    def compute_histogram(self, img):
-        sub_image = self.create_sub_image(img)
+    def compute_histogram(self):
+        sub_image = self.create_sub_image()
         # Compute the histogram for each channel
         red_histogram = np.histogram(sub_image[:,:,0], bins=256, range=(0, 256))
         green_histogram = np.histogram(sub_image[:,:,1], bins=256, range=(0, 256))
@@ -41,8 +41,8 @@ class rectangle:
 
         return red_histogram, green_histogram, blue_histogram
     
-    def disp_histogram(self, img):
-        red_histogram, green_histogram, blue_histogram = self.compute_histogram(img)
+    def disp_histogram(self):
+        red_histogram, green_histogram, blue_histogram = self.compute_histogram()
         # Plot the histogram
         fig, ax = plt.subplots(1)
         plt.plot(red_histogram[1][:-1], red_histogram[0], color='red')
@@ -86,43 +86,78 @@ class rectangle:
                 update_flag = self.optomize_rectangle_ga(model, param_dict)
             elif method == 'SA':
                 update_flag = self.optomize_rectangle_sa(model, param_dict)
-            elif method == 'feature':
-                update_flag = self.optomize_rectangle_feature(model, param_dict)
+            elif method == 'quadratic':
+                update_flag = self.optomize_rectangle_quadratic(model, param_dict)
             else:
                 print("Optimization method not recognized")
         return update_flag
     
-    def optomize_rectangle_feature(self, model, param_dict):
+    def optomize_rectangle_quadratic(self, model, param_dict):
+        x_test = param_dict['test_x']
+        y_test = param_dict['test_y']
+        loss = param_dict['optimization_loss']
         
-        x_radi = param_dict['x_radi']
-        y_radi = param_dict['y_radi']
-        num_features = param_dict['feature_num_features']
-        num_points = param_dict['feature_num_points']
-        quality = param_dict['feature_quality']
-        min_dist = param_dict['feature_min_dist']
-        block_size = param_dict['feature_block_size']
-        update_flag = False
+        def compute_score_wrapper(direction):
+            # Compute the original score
+            original_score = compute_score(self.create_sub_image(), model, method = loss)
+            scores = []
+            update_flag = False
+
+            if direction == 'x':
+                # Compute the scores for the x direction
+                for point in x_test:
+                    new_img = self.move_rectangle(point, 0, 0)
+                    tmp_score = compute_score(new_img, model, method = loss)
+                    scores.append(tmp_score)
+
+                # Minimize the quadratic
+                best_x_val = x_test[np.argmin(scores)]
+                best_x_score = np.min(scores)
+                
+                # Update the rectangle if the new score is better
+                if best_x_score < original_score:
+                    update_flag = True
+                    self.center_x = self.center_x + best_x_val
+            
+            elif direction == 'y':
+                # Compute the scores for the y direction
+                for point in y_test:
+                    new_img = self.move_rectangle(0, point, 0)
+                    tmp_score = compute_score(new_img, model, method = loss)
+                    scores.append(tmp_score)
+
+                # Minimize the quadratic
+                best_y_val = y_test[np.argmin(scores)]
+                best_y_score = np.min(scores)
+                
+                # Update the rectangle if the new score is better
+                if best_y_score < original_score:
+                    update_flag = True
+                    self.center_y = self.center_y + best_y_val
+
+            else:
+                print("Direction not recognized")
+                return update_flag
+                
+            return update_flag
+
+
+        update_flag_x = compute_score_wrapper('x')
+        update_flag_y = compute_score_wrapper('y')
+
+        if update_flag_x or update_flag_y:
+            update_flag = True
+        else:
+            update_flag = False
         
-        # Create the feature params
-        feature_params = dict(maxCorners = num_features,
-                              qualityLevel = quality,
-                              minDistance = min_dist,
-                              blockSize = block_size)
-        
-        # Compute the X offset feature positions
-        x_test = np.round(np.linspace(-x_radi, x_radi, num_points)).astype(int)
-        avg_x_dist = []
-        width_center = np.round(self.width / 2).astype(int)
+        return update_flag
+
+
+        """
         for x_val in x_test:
             new_img = self.move_rectangle(x_val, 0, 0)
-
-            if np.median(new_img) == 0:
-                distance = np.inf
-            else:
-                p0 = cv.goodFeaturesToTrack(new_img, mask = None, **feature_params)
-                center_x = np.mean(p0, axis = 0)[0][0]
-                distance = np.abs(center_x - width_center)
-            avg_x_dist.append(distance)
+            tmp_score = compute_score(new_img, model, method = 'euclidean')
+            avg_x_dist.append(tmp_score)
 
         # Find the best x offset
         best_x_offset = minimize_quadratic(x_test, avg_x_dist, -x_radi, x_radi)
@@ -140,17 +175,11 @@ class rectangle:
         # Compute the Y offset feature positions
         y_test = np.round(np.linspace(-y_radi, y_radi, num_points)).astype(int)
         avg_y_dist = []
-        height_center = np.round(self.height / 2).astype(int)
+
         for y_val in y_test:
             new_img = self.move_rectangle(0, y_val, 0)
-
-            if np.median(new_img) == 0:
-                distance = np.inf
-            else:
-                p0 = cv.goodFeaturesToTrack(new_img, mask = None, **feature_params)
-                center_y = np.mean(p0, axis = 0)[0][1]
-                distance = np.abs(center_y - height_center)
-            avg_y_dist.append(distance)
+            tmp_score = compute_score(new_img, model, method = 'euclidean')
+            avg_y_dist.append(tmp_score)
 
         # Find the best y offset
         best_y_offset = minimize_quadratic(y_test, avg_y_dist, -y_radi, y_radi)
@@ -166,7 +195,7 @@ class rectangle:
             update_flag = True
 
         return update_flag
-
+        """
 
 
 
