@@ -9,6 +9,7 @@ from functions.rectangle import five_2_four_rect, compute_score
 from functions.general import minimize_quadratic
 import random
 import cv2 as cv
+from functions.optimization_models import simulated_annealing
 
 class rectangle:
     def __init__(self, rect):
@@ -32,6 +33,7 @@ class rectangle:
         self.final_opt = False
         self.ID = None
         self.unit_sqr = None
+        self.neighbors = None
 
     def create_sub_image(self):
         sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, self.unit_sqr, self.img)
@@ -129,149 +131,39 @@ class rectangle:
         return update_flag
 
 
-        """
-        for x_val in x_test:
-            new_img = self.move_rectangle(x_val, 0, 0)
-            tmp_score = compute_score(new_img, model, method = 'euclidean')
-            avg_x_dist.append(tmp_score)
+         
 
-        # Find the best x offset
-        best_x_offset = minimize_quadratic(x_test, avg_x_dist, -x_radi, x_radi)
-        best_x_offset = np.round(best_x_offset).astype(int)
-        
-        # Compare the current score to the new score
-        current_score = compute_score(self.create_sub_image(), model, method = 'euclidean')
-        new_score = compute_score(self.move_rectangle(best_x_offset, 0, 0), model, method = 'euclidean')
+    def optomize_rectangle_pso(self, model, param_dict):
+        # Pull the params
+        x_radi = param_dict['x_radi']
+        y_radi = param_dict['y_radi']
+        theta_radi = param_dict['theta_radi']
+        loss = param_dict['optimization_loss']
+        swarm_size = param_dict['swarm_size']
+        mxiter = param_dict['maxiter']
 
-        # Update the rectangle if the new score is better
-        if new_score < current_score:
-            self.center_x = self.center_x + best_x_offset
-            update_flag = True
-
-        # Compute the Y offset feature positions
-        y_test = np.round(np.linspace(-y_radi, y_radi, num_points)).astype(int)
-        avg_y_dist = []
-
-        for y_val in y_test:
-            new_img = self.move_rectangle(0, y_val, 0)
-            tmp_score = compute_score(new_img, model, method = 'euclidean')
-            avg_y_dist.append(tmp_score)
-
-        # Find the best y offset
-        best_y_offset = minimize_quadratic(y_test, avg_y_dist, -y_radi, y_radi)
-        best_y_offset = np.round(best_y_offset).astype(int)
-
-        # Compare the current score to the new score
-        current_score = compute_score(self.create_sub_image(), model, method = 'euclidean')
-        new_score = compute_score(self.move_rectangle(0, best_y_offset, 0), model, method = 'euclidean')
-
-        # Update the rectangle if the new score is better
-        if new_score < current_score:
-            self.center_y = self.center_y + best_y_offset
-            update_flag = True
-
-        return update_flag
-        """
-
-
-
-        """
-
-        # Create objective function
-        unit_sqr = create_unit_square(self.width, self.height)
-
+        # Define the objective function
         def objective_function(x):
             dX, dY, dTheta = x
         
-            center_x = self.center_x + dX
-            center_y = self.center_y + dY
-            theta = self.theta + dTheta
-            
-            sub_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, self.unit_sqr, self.img)
-            dist = np.linalg.norm(sub_img - model)
+            test_img = self.move_rectangle(dX, dY, dTheta)
+            dist = compute_score(test_img, model, method = loss)
+
             return dist
-    
         
-        if method == 'PSO':
-            # Pull the parameters from the param_list
-            swarm_size = param_dict['swarm_size']
-            mxiter = param_dict['maxiter']
+        # Define the bounds
+        lb = [-x_radi, -y_radi, -theta_radi]
+        ub = [x_radi, y_radi, theta_radi]
 
-            lb = [-x_radi, -y_radi, -theta_radi]
-            ub = [x_radi, y_radi, theta_radi]
-            xopt, fopt = pso(objective_function, lb, ub, swarmsize=swarm_size, maxiter=mxiter)
-
-
-        elif method == 'GA':
-            def custom_mutate(individual):
-                bounds = [(-x_radi, x_radi), (-y_radi, y_radi), (-theta_radi, theta_radi)]
-
-                for i in range(len(individual)):
-                    if random.random() < 0.1:
-                        individual[i] = random.randint(*bounds[i])
-                return individual,
-        
-            def objective_function(x):
-                dX, dY, dTheta = x
-            
-                center_x = self.center_x + dX
-                center_y = self.center_y + dY
-                theta = self.theta + dTheta
-                
-                sub_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, unit_sqr, img)
-                dist = np.linalg.norm(sub_img - model)
-                return dist,
-        
-            # Define the individual and population functions
-            creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-            creator.create("Individual", list, fitness=creator.FitnessMin)
-
-            # Define the individual and population functions
-            toolbox = base.Toolbox()
-            toolbox.register("attr_dx", random.randint, -x_radi, x_radi)  # bounds for dx
-            toolbox.register("attr_dy", random.randint, -y_radi, y_radi)  # bounds for dy
-            toolbox.register("attr_dtheta", random.randint, -theta_radi, theta_radi)  # bounds for dtheta
-
-            toolbox.register("individual", tools.initCycle, creator.Individual, (toolbox.attr_dx, toolbox.attr_dy, toolbox.attr_dtheta), n=1)
-            toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-            
-            # Define the objective function
-            toolbox.register("evaluate", objective_function)
-
-            # Define the genetic operators
-            toolbox.register("mate", tools.cxTwoPoint)
-            toolbox.register("mutate", custom_mutate)
-            toolbox.register("select", tools.selTournament, tournsize=3)
-
-            # Create the population
-            num_pops = param_dict['num_pops']
-            num_gens = param_dict['num_gens']
-            mutation_prob = param_dict['mutation_prob']
-            crossover_prob = param_dict['crossover_prob']
-
-            # Preform the genetic algorithm
-            pop = toolbox.population(n=num_pops)
-            hof = tools.HallOfFame(1)
-            algorithms.eaSimple(pop, toolbox, cxpb=crossover_prob, mutpb=mutation_prob, ngen=num_gens, stats=None, halloffame=hof, verbose=False)
-            xopt = hof[0]
-
-
-        elif method == 'SA':
-            # Pull the parameters from the param_list
-            mxiter = param_dict['maxiter']
-            reanneal_int = 20
-
-            # Optomize the rectangle using simulated annealing
-            bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
-            opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter, reanneal_interval = reanneal_int)
-            xopt = opt_solution.x
-
+        # Optomize the rectangle using PSO
+        xopt, fopt = pso(objective_function, lb, ub, swarmsize=swarm_size, maxiter=mxiter)
 
         # Check to make sure we are improving the model
         initial_fitness = objective_function([0,0,0])
-        fopt = objective_function(xopt)
-
-        if fopt < initial_fitness:
+        if initial_fitness < fopt:
+            update_flag = False
+            return update_flag
+        else:
             delta_x = np.round(xopt[0]).astype(int)
             delta_y = np.round(xopt[1]).astype(int)
             delta_theta = np.round(xopt[2]).astype(int)
@@ -280,23 +172,134 @@ class rectangle:
             self.center_y = self.center_y + delta_y
             self.theta = self.theta + delta_theta
 
-            cnt = 1
-        else:
-            cnt = 0
-
-        return cnt
-
-        """
-
-         
-
-    def optomize_rectangle_pso(self, model, param_dict):
-        print("T")
+            update_flag = True
+            return update_flag
+    
+        
 
     def optomize_rectangle_ga(self, model, param_dict):
-        print("T")
+        x_radi = param_dict['x_radi']
+        y_radi = param_dict['y_radi']
+        theta_radi = param_dict['theta_radi']
+        loss = param_dict['optimization_loss']
+        num_pops = param_dict['num_pops']
+        num_gens = param_dict['num_gens']
+        mutation_prob = param_dict['mutation_prob']
+        crossover_prob = param_dict['crossover_prob']
+
+        def custom_mutate(individual):
+            bounds = [(-x_radi, x_radi), (-y_radi, y_radi), (-theta_radi, theta_radi)]
+
+            for i in range(len(individual)):
+                if random.random() < 0.1:
+                    individual[i] = random.randint(*bounds[i])
+            return individual,
+        
+        def objective_function(x):
+            dX, dY, dTheta = x
+        
+            test_img = self.move_rectangle(dX, dY, dTheta)
+            dist = compute_score(test_img, model, method = loss)
+            return dist,
+        
+        # Define the individual and population functions
+        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+        creator.create("Individual", list, fitness=creator.FitnessMin)
+
+        # Define the individual and population functions
+        toolbox = base.Toolbox()
+        toolbox.register("attr_dx", random.randint, -x_radi, x_radi)  # bounds for dx
+        toolbox.register("attr_dy", random.randint, -y_radi, y_radi)  # bounds for dy
+        toolbox.register("attr_dtheta", random.randint, -theta_radi, theta_radi)  # bounds for dtheta
+
+        toolbox.register("individual", tools.initCycle, creator.Individual, (toolbox.attr_dx, toolbox.attr_dy, toolbox.attr_dtheta), n=1)
+        toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+        
+        # Define the objective function
+        toolbox.register("evaluate", objective_function)
+
+        # Define the genetic operators
+        toolbox.register("mate", tools.cxTwoPoint)
+        toolbox.register("mutate", custom_mutate)
+        toolbox.register("select", tools.selTournament, tournsize=3)
+
+        # Preform the genetic algorithm
+        pop = toolbox.population(n=num_pops)
+        hof = tools.HallOfFame(1)
+        algorithms.eaSimple(pop, toolbox, cxpb=crossover_prob, mutpb=mutation_prob, ngen=num_gens, stats=None, halloffame=hof, verbose=False)
+        xopt = hof[0]
+
+        # Check to make sure we are improving the model
+        initial_fitness = objective_function([0,0,0])
+        fopt = objective_function(xopt)
+
+        if initial_fitness < fopt:
+            update_flag = False
+            return update_flag
+        else:
+            delta_x = np.round(xopt[0]).astype(int)
+            delta_y = np.round(xopt[1]).astype(int)
+            delta_theta = np.round(xopt[2]).astype(int)
+
+            self.center_x = self.center_x + delta_x
+            self.center_y = self.center_y + delta_y
+            self.theta = self.theta + delta_theta
+
+            update_flag = True
+            return update_flag
     
     def optomize_rectangle_sa(self, model, param_dict):
-        print("T")
+        # Pull the params
+        x_radi = param_dict['x_radi']
+        y_radi = param_dict['y_radi']
+        theta_radi = param_dict['theta_radi']
+        loss = param_dict['optimization_loss']
+        mxiter = param_dict['maxiter']
+
+        # Define the objective function
+        def objective_function(x):
+            dX, dY, dTheta = x
+        
+            test_img = self.move_rectangle(dX, dY, dTheta)
+            dist = compute_score(test_img, model, method = loss)
+
+            return dist
+        
+        # Define the bounds
+        bounds = [[-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi]]
+
+        initial_temp = 5000
+        min_temp = 1
+        cooling_rate = 0.99
+        step_size = 3
+        max_iterations = 300
+
+        xopt, fopt = simulated_annealing(objective_function, bounds, initial_temperature = initial_temp, cooling_rate = cooling_rate, min_temperature = min_temp, max_iterations = max_iterations, step_size = step_size)
+
+
+
+        # Optomize the rectangle using simulated annealing
+        #opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter)
+        #xopt = opt_solution.x
+
+        # Check to make sure we are improving the model
+        initial_fitness = objective_function([0,0,0])
+        #fopt = opt_solution.fun
+
+        if initial_fitness < fopt:
+            update_flag = False
+            return update_flag
+        else:
+            delta_x = np.round(xopt[0]).astype(int)
+            delta_y = np.round(xopt[1]).astype(int)
+            delta_theta = np.round(xopt[2]).astype(int)
+
+            self.center_x = self.center_x + delta_x
+            self.center_y = self.center_y + delta_y
+            self.theta = self.theta + delta_theta
+
+            update_flag = True
+            return update_flag
+        
 
 

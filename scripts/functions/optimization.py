@@ -5,6 +5,7 @@ from functions.image_processing import create_unit_square
 from functions.display import disp_spiral_path
 from tqdm import tqdm
 import cv2 as cv
+import random
 
 def build_rect_list(rect_list, img):
         output_list = []
@@ -135,6 +136,30 @@ def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rec
 
         epoch += 1
     
+    return
+
+def final_optimize_list(rect_list, model, opt_param_dict, epoch):
+    total = len(rect_list)
+
+    for cnt in range(epoch):
+        txt = f"Non Linear Model Optimization {cnt + 1}/{epoch}"
+        results = []
+
+        for rect in tqdm(rect_list, total = total, desc = txt):
+            if not rect.final_opt:
+                tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
+            else:
+                tmp_flag = False
+            
+            if not tmp_flag:
+                rect.final_opt = True
+
+            results.append(tmp_flag)
+        
+        num_updated = np.sum(results)
+        print(f"Updated {num_updated} rectangles")
+
+    print("Finished Model Optimization")
     return
 
 
@@ -343,4 +368,3 @@ def distance_optimize(rect_list, spiral_path):
     print("Finished optimizing distance")
     return
     
-

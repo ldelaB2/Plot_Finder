@@ -9,6 +9,7 @@ from functions.optimization import build_rect_list, compute_model, sparse_optimi
 from functions.display import disp_rectangles
 from functions.optimization import compute_spiral_path, compute_neighbors, distance_optimize
 import numpy as np
+from functions.optimization import final_optimize_list
 
 
 class wavepad:
@@ -238,6 +239,25 @@ class wavepad:
         # Compute the neighbors
         compute_neighbors(self.final_rect_list, kernel_radi)
 
-        # Apply the Distance optimization
-        distance_optimize(self.final_rect_list, spiral_path)
+        # Final Optimization
+        meta_epoch = 3
+        model_epoch = 2
+
+        opt_param_dict = {}
+        opt_param_dict['method'] = 'SA'
+        opt_param_dict['x_radi'] = 10
+        opt_param_dict['y_radi'] = 10
+        opt_param_dict['theta_radi'] = 2
+        opt_param_dict['optimization_loss'] = 'euclidean'
+        opt_param_dict['maxiter'] = 250
+        
+        for meta_cnt in range(meta_epoch):
+            print(f"Final Optimization Meta Epoch {meta_cnt + 1}/{meta_epoch}")
+            # Apply the Distance optimization
+            distance_optimize(self.final_rect_list, spiral_path)
+
+            # Apply model optimization
+            final_optimize_list(self.final_rect_list, self.initial_model, opt_param_dict, model_epoch)
+            print("T")
+
         print("T")
