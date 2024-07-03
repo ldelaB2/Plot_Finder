@@ -6,7 +6,6 @@ from deap import base, creator, tools, algorithms
 from pyswarm import pso
 from functions.image_processing import create_unit_square, extract_rectangle
 from functions.rectangle import five_2_four_rect, compute_score
-from functions.display import disp_flow
 from functions.general import minimize_quadratic
 import random
 import cv2 as cv
@@ -29,31 +28,11 @@ class rectangle:
         self.img = None
         self.model = None
         self.flagged = False
+        self.initial_opt = False
+        self.final_opt = False
         self.ID = None
         self.unit_sqr = None
 
-    def compute_histogram(self):
-        sub_image = self.create_sub_image()
-        # Compute the histogram for each channel
-        red_histogram = np.histogram(sub_image[:,:,0], bins=256, range=(0, 256))
-        green_histogram = np.histogram(sub_image[:,:,1], bins=256, range=(0, 256))
-        blue_histogram = np.histogram(sub_image[:,:,2], bins=256, range=(0, 256))
-
-        return red_histogram, green_histogram, blue_histogram
-    
-    def disp_histogram(self):
-        red_histogram, green_histogram, blue_histogram = self.compute_histogram()
-        # Plot the histogram
-        fig, ax = plt.subplots(1)
-        plt.plot(red_histogram[1][:-1], red_histogram[0], color='red')
-        plt.plot(green_histogram[1][:-1], green_histogram[0], color='green')
-        plt.plot(blue_histogram[1][:-1], blue_histogram[0], color='blue')
-        plt.title("RGB Histogram")
-        plt.xlabel("Pixel Value")
-        plt.ylabel("Frequency")
-        plt.show()
-        return fig, ax
-    
     def create_sub_image(self):
         sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, self.unit_sqr, self.img)
         return sub_image
@@ -75,28 +54,25 @@ class rectangle:
 
     def optomize_rectangle(self, model, param_dict):
         method = param_dict['method']
-
-        if self.flagged == True:
-            update_flag = False
         
+        if method == 'PSO':
+            update_flag = self.optomize_rectangle_pso(model, param_dict)
+        elif method == 'GA':
+            update_flag = self.optomize_rectangle_ga(model, param_dict)
+        elif method == 'SA':
+            update_flag = self.optomize_rectangle_sa(model, param_dict)
+        elif method == 'quadratic':
+            update_flag = self.optomize_rectangle_quadratic(model, param_dict)
         else:
-            if method == 'PSO':
-                update_flag = self.optomize_rectangle_pso(model, param_dict)
-            elif method == 'GA':
-                update_flag = self.optomize_rectangle_ga(model, param_dict)
-            elif method == 'SA':
-                update_flag = self.optomize_rectangle_sa(model, param_dict)
-            elif method == 'quadratic':
-                update_flag = self.optomize_rectangle_quadratic(model, param_dict)
-            else:
-                print("Optimization method not recognized")
+            print("Optimization method not recognized")
+
         return update_flag
     
     def optomize_rectangle_quadratic(self, model, param_dict):
         x_test = param_dict['test_x']
         y_test = param_dict['test_y']
         loss = param_dict['optimization_loss']
-        
+
         def compute_score_wrapper(direction):
             # Compute the original score
             original_score = compute_score(self.create_sub_image(), model, method = loss)
@@ -148,7 +124,7 @@ class rectangle:
         if update_flag_x or update_flag_y:
             update_flag = True
         else:
-            update_flag = False
+           update_flag = False
         
         return update_flag
 
@@ -314,6 +290,13 @@ class rectangle:
 
          
 
+    def optomize_rectangle_pso(self, model, param_dict):
+        print("T")
 
+    def optomize_rectangle_ga(self, model, param_dict):
+        print("T")
+    
+    def optomize_rectangle_sa(self, model, param_dict):
+        print("T")
 
 

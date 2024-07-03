@@ -1,6 +1,10 @@
 import numpy as np
 import cv2 as cv
 from PIL import Image
+import matplotlib
+matplotlib.use('Qt5Agg')
+from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def flatten_mask_overlay(image, mask, alpha = 0.5):
     """
@@ -80,17 +84,37 @@ def disp_rectangles(rect_list):
 
     return output_img
 
-# Optionally, visualize the flow
-def disp_flow(img, flow, step=16):
-    h, w = img.shape[:2]
-    y, x = np.mgrid[step/2:h:step, step/2:w:step].reshape(2, -1).astype(int)
-    fx, fy = flow[y, x].T
+def disp_spiral_path(path):
+    max_range = np.max(path[:,0])
+    max_row = np.max(path[:,1])
 
-    lines = np.vstack([x, y, x + fx, y + fy]).T.reshape(-1, 2, 2)
-    lines = np.int32(lines + 0.5)
+    fig, ax = plt.subplots()
+    scat = ax.scatter([],[])
+    ax.set_xlim(0, max_row + 1)
+    ax.set_ylim(0, max_range + 1)
 
-    vis = img.copy()
-    for (x1, y1), (x2, y2) in lines:
-        cv.line(vis, (x1, y1), (x2, y2), (0, 255, 0), 1)
-        cv.circle(vis, (x1, y1), 1, (0, 255, 0), -1)
-    return vis
+    all_points = []
+    def init():
+        scat.set_offsets(np.empty((0,2)))
+        return scat,
+
+    def update(frame):
+        current_point = path[frame][::-1]
+        all_points.append(current_point)
+        scat.set_offsets(all_points)
+        return scat,
+
+    ani = FuncAnimation(fig, update, frames = len(path), init_func = init, interval = 20, blit = True)
+    plt.show()
+
+    return
+
+def disp_distance_change(expected_centers, geometric_mean, current_center):
+    expected_centers = np.array(expected_centers)
+    geometric_mean = np.array(geometric_mean)
+    current_center = np.array(current_center)
+    plt.scatter(expected_centers[:,0], expected_centers[:,1], c = 'r', label = 'Expected Center')
+    plt.scatter(geometric_mean[0], geometric_mean[1], c = 'g', label = 'Geometric Mean')
+    plt.scatter(current_center[0], current_center[1], c = 'b', label = 'Current Center')
+    plt.legend()
+    plt.show()

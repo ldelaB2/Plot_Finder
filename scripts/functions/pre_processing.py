@@ -220,7 +220,7 @@ def rotate_img(g_img, rgb_img, rotation_angle):
     # Rotate the image
     g_img = cv.warpAffine(g_img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
     rgb_img = cv.warpAffine(rgb_img, rotation_matrix, (new_width, new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = (0,0,0))
-    
+ 
     # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
     return inverse_rotation_matrix, g_img, rgb_img
 

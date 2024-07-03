@@ -95,6 +95,12 @@ def find_next_rect(rect_list, direction, edge = False):
         tmp1_rect = copy.copy(rect_list[min_val_rect[e]])
         tmp2_rect = copy.copy(rect_list[max_val_rect[e]])
 
+        # Reset the flags
+        tmp1_rect.initial_opt = False
+        tmp2_rect.initial_opt = False
+        tmp1_rect.flagged = False
+        tmp2_rect.flagged = False
+
         if direction == 'range':
             tmp1_rect.center_y = tmp1_rect.center_y - delta
             tmp2_rect.center_y = tmp2_rect.center_y + delta
@@ -113,39 +119,26 @@ def find_next_rect(rect_list, direction, edge = False):
 
     return min_list, max_list
 
-def set_range_row(rect_list, num_ranges, num_rows):
-    center_x = np.array([rect.center_x for rect in rect_list])
-    center_y = np.array([rect.center_y for rect in rect_list])
+def set_range_row(rect_list):
+    range_list = np.array([rect.range for rect in rect_list])
+    row_list = np.array([rect.row for rect in rect_list])
+    unique_ranges = np.unique(range_list)
+    unique_rows = np.unique(row_list)
 
-    row_cluster = KMeans(n_clusters = num_rows, n_init = 1000, max_iter = 200)
-    rows = row_cluster.fit_predict(center_x.reshape(-1,1))
-
-    range_cluster = KMeans(n_clusters = num_ranges, n_init = 1000, max_iter = 200)
-    ranges = range_cluster.fit_predict(center_y.reshape(-1,1))
-
-    # Make sure row clusters are in order
-    row_centroids = row_cluster.cluster_centers_.flatten()
-    row_ordered_indices = np.argsort(row_centroids)
-    new_rows = np.zeros_like(rows)
-    for i in range(num_rows):
-        indx = np.where(rows == i)[0]
-        new_indx = np.argwhere(row_ordered_indices == i)[0][0]
-        new_rows[indx] = new_indx
-
-    # Make sure range clusters are in order
-    range_centroids = range_cluster.cluster_centers_.flatten()
-    range_ordered_indices = np.argsort(range_centroids)
-    new_ranges = np.zeros_like(ranges)
-    for i in range(num_ranges):
-        indx = np.where(ranges == i)[0]
-        new_indx = np.argwhere(range_ordered_indices == i)[0][0]
-        new_ranges[indx] = new_indx
-
-    # Set the range and row values for each rectangle
-    for e, rect in enumerate(rect_list):
-        rect.range = new_ranges[e]
-        rect.row = new_rows[e]
-        rect.ID = f"{rect.range}_{rect.row}"
+    rng_cnt = 1
+    for range_val in unique_ranges:
+        row_cnt = 1
+        for row_val in unique_rows:
+            indx = np.where((range_list == range_val) & (row_list == row_val))[0]
+            if len(indx) > 1:
+                print(f"Range {rng_cnt} Row {row_cnt} has {len(indx)} rectangles")
+                return
+            else:
+                indx = indx[0]
+                rect_list[indx].range = rng_cnt
+                rect_list[indx].row = row_cnt
+            row_cnt += 1
+        rng_cnt += 1
 
     return
 

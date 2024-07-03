@@ -80,17 +80,23 @@ class plot_finder_job:
                 "&&&&&&&&&&&&&&&&&&&&&%%%%%%%%%%%%%%%%%#,,,####%%%&&&&&&&&&&&&%%%%%%%%%%%%%@@@@@@"
         ]
         
-        for element in banner:
-            print(element)
-        print("\n")
-        for element in logo:
-            print(element)
+        
 
         if intro == True:
+            for element in banner:
+                print(element)
+            print("\n")
+            for element in logo:
+                print(element)
+
             print(f"Using {self.params['num_cores']} cores to process image")
             print(f"Reading Images from: \n{self.params['img_path']} \nSaving Output to: \n{self.params['output_path']}")
 
         else:
+            for element in banner:
+                print(element)
+            print("\n")
+            
             print(f"""Finished Processing Image: {self.params['img_name']}
             Thanks for using PLot Finder! Keep on Keeping on - Squid Billy Willy""")
 

@@ -5,8 +5,9 @@ from matplotlib import pyplot as plt
 from functions.wavepad import filter_wavepad, trim_boarder, find_center_line, impute_skel
 from functions.image_processing import find_correct_sized_obj
 from functions.rectangle import set_range_row, check_within_img, compute_score_list, compare_next_to_current, set_id, build_rectangles, find_next_rect, remove_rectangles
-from functions.optimization import build_rect_list, compute_model, optimize_list
+from functions.optimization import build_rect_list, compute_model, sparse_optimize_list
 from functions.display import disp_rectangles
+from functions.optimization import compute_spiral_path, compute_neighbors, distance_optimize
 import numpy as np
 
 
@@ -63,9 +64,6 @@ class wavepad:
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
         self.initial_model = compute_model(self.initial_rect_list, initial= True)
         
-        # Optimize initial rectangles
-        self.sparse_optimize(self.initial_rect_list, self.initial_model, epoch = 3, recompute_model = True, txt = "Initial Optimization")
-
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
         self.rows_2_find = row_cnt - initial_row_cnt
@@ -86,6 +84,11 @@ class wavepad:
             print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
             self.remove_rectangles("row", abs(self.rows_2_find))
         
+        # Optimize initial rectangles before adding
+        self.sparse_optimize(self.initial_rect_list, txt = "Initial Optimization")
+        # Recompute the model
+        self.initial_model = compute_model(self.initial_rect_list, initial = False)
+
         # Add ranges
         if self.ranges_2_find > 0:
             print(f"Finding {self.ranges_2_find} missing range(s) from FFT")
@@ -143,27 +146,25 @@ class wavepad:
         label_flow = self.params["label_flow"]
 
         # Setting the range and row
-        set_range_row(self.final_rect_list, range_cnt, row_cnt)
+        set_range_row(self.final_rect_list)
         # Setting the id
         set_id(self.final_rect_list, start = label_start, flow = label_flow)
         
+        self.phase_six()
         print("Finished Adding Labels")
 
 
-    def sparse_optimize(self, rect_list, model, epoch, txt = "Sparse Optimization", recompute_model = False):
+    def sparse_optimize(self, rect_list, txt):
         opt_param_dict = {}
         opt_param_dict['method'] = 'quadratic'
         opt_param_dict['x_radi'] = 10
         opt_param_dict['y_radi'] = 10
         opt_param_dict['quadratic_num_points'] = 15
         opt_param_dict['optimization_loss'] = 'euclidean'
-        opt_param_dict['epoch'] = epoch
+        opt_param_dict['threshhold'] = 3
+        opt_param_dict['max_epoch'] = 10
 
-        optimize_list(rect_list, model, opt_param_dict, txt = txt)
-            
-        if recompute_model:
-            model = compute_model(rect_list)
-            print("Recomputed Model")
+        sparse_optimize_list(rect_list, self.initial_model, opt_param_dict, txt = txt)
 
         return
 
@@ -177,7 +178,7 @@ class wavepad:
 
             if min_mult != np.inf:
                 # Optimize the rectangles
-                self.sparse_optimize(min_list, self.initial_model, txt = f"Sparse Optimization Add Min {direction} {cnt + 1}/{num_2_add}")
+                self.sparse_optimize(min_list, txt = f"Sparse Optimization Add Min {direction} {cnt + 1}/{num_2_add}")
                 # Compute the score
                 min_score = compute_score_list(min_list, self.initial_model)
                 # Multiply the score by the multiplier
@@ -188,7 +189,7 @@ class wavepad:
 
             if max_mult != np.inf:
                 # Optimize the rectangles
-                self.sparse_optimize(max_list, self.initial_model, txt = f"Sparse Optimization Add Max {direction} {cnt + 1}/{num_2_add}")
+                self.sparse_optimize(max_list, txt = f"Sparse Optimization Add Max {direction} {cnt + 1}/{num_2_add}")
                 # Compute the score
                 max_score = compute_score_list(max_list, self.initial_model)
                 # Multiply the score by the multiplier
@@ -223,3 +224,20 @@ class wavepad:
                 self.initial_rect_list = remove_rectangles(self.initial_rect_list, min_list)
         
         print(f"Finished removing {num_2_remove} {direction}(s)")
+
+
+
+
+    def phase_six(self):
+        # Define the kernel radi size
+        kernel_radi = [2, 2]
+
+        # Compute the spiral path
+        spiral_path = compute_spiral_path(self.final_rect_list)
+
+        # Compute the neighbors
+        compute_neighbors(self.final_rect_list, kernel_radi)
+
+        # Apply the Distance optimization
+        distance_optimize(self.final_rect_list, spiral_path)
+        print("T")
