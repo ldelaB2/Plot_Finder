@@ -22,7 +22,7 @@ class wavepad:
         self.phase_one() # Filtering the wavepads
         self.phase_two() # Finding the center lines and initial rectangles
         self.phase_three() # Finding the all rectangles
-        self.phase_four() # Making sure we found the correct ranges/rows
+        #self.phase_four() # Making sure we found the correct ranges/rows
         self.phase_five() # add labels
 
     def phase_one(self):
@@ -63,11 +63,15 @@ class wavepad:
         
         # Building the rect list and model
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
-        self.initial_model = compute_model(self.initial_rect_list, initial= True)
+        
         
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
         self.rows_2_find = row_cnt - initial_row_cnt
+
+        self.initial_model = compute_model(self.initial_rect_list)
+        # Optimize initial rectangles before adding
+        self.sparse_optimize(self.initial_rect_list, txt = "Initial Optimization")
 
         print("Finished Finding Center Lines and Initial Rectangles")
 
@@ -85,10 +89,9 @@ class wavepad:
             print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
             self.remove_rectangles("row", abs(self.rows_2_find))
         
-        # Optimize initial rectangles before adding
-        self.sparse_optimize(self.initial_rect_list, txt = "Initial Optimization")
+       
         # Recompute the model
-        self.initial_model = compute_model(self.initial_rect_list, initial = False)
+        self.initial_model = compute_model(self.initial_rect_list)
 
         # Add ranges
         if self.ranges_2_find > 0:
@@ -241,15 +244,16 @@ class wavepad:
 
         # Final Optimization
         meta_epoch = 3
-        model_epoch = 2
+        model_epoch = 1
 
         opt_param_dict = {}
         opt_param_dict['method'] = 'SA'
-        opt_param_dict['x_radi'] = 10
-        opt_param_dict['y_radi'] = 10
-        opt_param_dict['theta_radi'] = 2
-        opt_param_dict['optimization_loss'] = 'euclidean'
-        opt_param_dict['maxiter'] = 250
+        opt_param_dict['x_radi'] = 20
+        opt_param_dict['y_radi'] = 20
+        opt_param_dict['theta_radi'] = 5
+        opt_param_dict['optimization_loss'] = "euclidean"
+        opt_param_dict['maxiter'] = 1000
+        opt_param_dict['swarm_size'] = 50
         
         for meta_cnt in range(meta_epoch):
             print(f"Final Optimization Meta Epoch {meta_cnt + 1}/{meta_epoch}")

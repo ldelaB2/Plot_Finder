@@ -124,3 +124,23 @@ def find_correct_sized_obj(img):
     filtered_img = np.where(mask, 1,0).astype(np.uint8)
 
     return filtered_img
+
+
+def resize_and_pad(img, target_size):
+        original_size = img.shape[:2]
+        ratio = float(target_size) / max(original_size)
+
+        new_size = tuple([int(x * ratio) for x in original_size])
+
+        resized_img = cv.resize(img, (new_size[1], new_size[0]))
+
+        padded_img = np.zeros((target_size, target_size, 3), dtype = np.uint8)
+
+        # Calculate the poistion to place the image
+        x_offset = (target_size - new_size[1]) // 2
+        y_offset = (target_size - new_size[0]) // 2
+
+        # Paste the resized image onto the padded image
+        padded_img[y_offset:y_offset + new_size[0], x_offset:x_offset + new_size[1]] = resized_img
+
+        return padded_img

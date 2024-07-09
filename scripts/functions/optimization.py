@@ -6,6 +6,15 @@ from functions.display import disp_spiral_path
 from tqdm import tqdm
 import cv2 as cv
 import random
+from keras.applications.vgg16 import VGG16
+from keras.models import Model
+from functions.image_processing import resize_and_pad
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import pairwise_distances
+import matplotlib.pyplot as plt
+
 
 def build_rect_list(rect_list, img):
         output_list = []
@@ -32,57 +41,85 @@ def build_rect_list(rect_list, img):
 
         return output_list
 
-def compute_model(rect_list, initial = False):
-    # Create the model object
+def compute_model(rect_list, initial = False, threshold = False):
     if len(rect_list[0].img.shape) == 2:
         model = np.zeros((rect_list[0].height, rect_list[0].width))
     else:
         model = np.zeros((rect_list[0].height, rect_list[0].width, rect_list[0].img.shape[2]))
-
-    if initial:
-        # Preallocate memory
-        distance = np.zeros((len(rect_list), len(rect_list)))
-
-        # Compute the distance matrix (only lower triangle because symetric)
-        for cnt1, rect1 in enumerate(rect_list):
-            img1 = rect1.create_sub_image()
-            for cnt2 in range(cnt1, len(rect_list)):
-                rect2 = rect_list[cnt2]
-                img2 = rect2.create_sub_image()
-                tmp_score = compute_score(img1, img2, method = "cosine")
-                distance[cnt1, cnt2] = tmp_score
-        
-        # Filling in the other side of symetric matrix
-        distance = distance + distance.T
-
-        # Compute the sum and median
-        distance_sum = np.sum(distance, axis = 1)
-        distance_median = np.median(distance_sum)
-        
-        # Find rects below the median
-        good_rect_indx = np.argwhere(distance_sum <= distance_median)
-
-        # Compute the model
-        for indx in good_rect_indx:
-            rect = rect_list[indx[0]]
-            subI = rect.create_sub_image()
-            model += subI
-
-        model = np.round((model / len(good_rect_indx))).astype(np.uint8)
-
-    else:
-        for rect in rect_list:
-            subI = rect.create_sub_image()
-            model += subI
-        
-        model = np.round((model / len(rect_list))).astype(np.uint8)
     
-    # Filter the model
-    _, binary_model = cv.threshold(model, 0, 1, cv.THRESH_OTSU)
-    model = model * binary_model
+    for rect in rect_list:
+        sub_img = rect.create_sub_image()
+        model += sub_img
 
-    print("Finished computing model")
+    model = np.round(model / len(rect_list)).astype(int)
+    """
+    dx = []
+    dy = []
+    for rect in rect_list:
+        x, y = compute_shift(rect)
+        dx.append(x)
+        dy.append(y)
+
+    dx = np.array(dx)
+    dy = np.array(dy)
+    computed_dist = np.sqrt(dx**2 + dy**2)
+
+    good_indx = np.where(computed_dist < np.mean(computed_dist))[0]
+
+    for indx in good_indx:
+        rect_list[indx].center_x += dx[indx]
+        rect_list[indx].center_y += dy[indx]
+        sub_img = rect_list[indx].create_sub_image()
+        model += sub_img
+
+    model = np.round(model / len(good_indx)).astype(int) 
+    """
+    
     return model
+
+def compute_shift(rect, tol = .001, shift = 10):
+    # Create the current img and center
+    current = rect.create_sub_image()
+    center_x = np.round(current.shape[1] / 2).astype(int)
+    center_y = np.round(current.shape[0] / 2).astype(int)
+
+    x_left = rect.move_rectangle(-shift,0,0)
+    x_right = rect.move_rectangle(shift,0,0)
+    y_up = rect.move_rectangle(0,shift,0)
+    y_down = rect.move_rectangle(0,-shift,0)
+
+    img_list = [x_left, x_right, y_up, y_down]
+    y_shift = []
+    x_shift = []
+
+    for cnt, img in enumerate(img_list):
+        flow = cv.calcOpticalFlowFarneback(current, img, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+
+        if cnt < 2:
+            if cnt == 1:
+                flow = -flow
+            indx = np.where(flow[...,0] > shift * (1 - tol))
+            if indx[0].size > 2:
+                mean_x = np.mean(indx[1])
+                calc_shift = np.round(mean_x - center_x).astype(int)
+            else:
+                calc_shift = 0
+            x_shift.append(calc_shift)
+        else:
+            if cnt == 2:
+                flow = -flow
+            indx = np.where(flow[...,1] > shift * (1 - tol))
+            if indx[0].size > 2:
+                mean_y = np.mean(indx[0])
+                calc_shift = np.round(mean_y - center_y).astype(int)
+            else:
+                calc_shift = 0
+            y_shift.append(calc_shift)
+
+    x_shift = np.round(np.mean(x_shift)).astype(int)
+    y_shift = np.round(np.mean(y_shift)).astype(int)
+        
+    return x_shift, y_shift
 
 def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rectangles"):
     # Pull the parameters
@@ -131,7 +168,7 @@ def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rec
 
             results.append(tmp_flag)
 
-        num_updated = np.sum(results)
+        #num_updated = np.sum(results)
         print(f"Updated {num_updated} rectangles")
 
         epoch += 1
@@ -146,14 +183,7 @@ def final_optimize_list(rect_list, model, opt_param_dict, epoch):
         results = []
 
         for rect in tqdm(rect_list, total = total, desc = txt):
-            if not rect.final_opt:
-                tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
-            else:
-                tmp_flag = False
-            
-            if not tmp_flag:
-                rect.final_opt = True
-
+            tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
             results.append(tmp_flag)
         
         num_updated = np.sum(results)

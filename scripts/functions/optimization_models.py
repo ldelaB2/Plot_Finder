@@ -22,7 +22,7 @@ def simulated_annealing(objective_function,
     if initial_temperature is None:
         initial_temperature = 1000
     if cooling_rate is None:
-        cooling_rate = 0.9
+        cooling_rate = 0.999
     if min_temperature is None:
         min_temperature = 1
     if max_iterations is None:

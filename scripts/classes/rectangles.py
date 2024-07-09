@@ -10,6 +10,8 @@ from functions.general import minimize_quadratic
 import random
 import cv2 as cv
 from functions.optimization_models import simulated_annealing
+from keras.applications.vgg16 import VGG16
+from keras.models import Model
 
 class rectangle:
     def __init__(self, rect):
@@ -74,17 +76,48 @@ class rectangle:
         x_test = param_dict['test_x']
         y_test = param_dict['test_y']
         loss = param_dict['optimization_loss']
+        eigen_vectors = param_dict['eigenvec']
+
+        base_model = VGG16(weights = 'imagenet', include_top = False, input_shape = (224, 224, 3))
+        cnn_model = Model(inputs = base_model.input, outputs = base_model.get_layer('block5_conv1').output)
+
+        mean_model = np.mean(model, axis = 0)
+
+        test = np.linspace(-200,200,20)
+        scores = []
+        for point in test:
+            new_img = self.move_rectangle(point,0, 0)
+            new_img = cv.resize(new_img, (224, 224))
+            new_img = np.expand_dims(new_img, axis = 0)
+            features = cnn_model.predict(new_img)
+            features = features.flatten()
+            distance = np.linalg.norm(model - features)
+            scores.append(distance)
+
+
+
+
+
+
+
 
         def compute_score_wrapper(direction):
             # Compute the original score
-            original_score = compute_score(self.create_sub_image(), model, method = loss)
+            #original_score = compute_score(self.create_sub_image(), model, method = loss)
             scores = []
             update_flag = False
-
+            
+        
             if direction == 'x':
                 # Compute the scores for the x direction
                 for point in x_test:
                     new_img = self.move_rectangle(point, 0, 0)
+                    new_img = cv.resize(new_img, (224, 224))
+                    new_img = np.expand_dims(new_img, axis = 0)
+
+                    features = cnn_model.predict(new_img)
+                    features = features.flatten()
+
                     tmp_score = compute_score(new_img, model, method = loss)
                     scores.append(tmp_score)
 
@@ -119,7 +152,7 @@ class rectangle:
                 
             return update_flag
 
-
+        """
         update_flag_x = compute_score_wrapper('x')
         update_flag_y = compute_score_wrapper('y')
 
@@ -127,8 +160,10 @@ class rectangle:
             update_flag = True
         else:
            update_flag = False
+
+        """
         
-        return update_flag
+        return #update_flag
 
 
          
@@ -266,7 +301,8 @@ class rectangle:
             return dist
         
         # Define the bounds
-        bounds = [[-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi]]
+        bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
+        #bounds = [[-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi]]
 
         initial_temp = 5000
         min_temp = 1
@@ -274,17 +310,17 @@ class rectangle:
         step_size = 3
         max_iterations = 300
 
-        xopt, fopt = simulated_annealing(objective_function, bounds, initial_temperature = initial_temp, cooling_rate = cooling_rate, min_temperature = min_temp, max_iterations = max_iterations, step_size = step_size)
+        #xopt, fopt = simulated_annealing(objective_function, bounds, initial_temperature = initial_temp, cooling_rate = cooling_rate, min_temperature = min_temp, max_iterations = max_iterations, step_size = step_size)
 
 
-
+        mxiter = 1000
         # Optomize the rectangle using simulated annealing
-        #opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter)
-        #xopt = opt_solution.x
+        opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter)
+        xopt = opt_solution.x
 
         # Check to make sure we are improving the model
         initial_fitness = objective_function([0,0,0])
-        #fopt = opt_solution.fun
+        fopt = opt_solution.fun
 
         if initial_fitness < fopt:
             update_flag = False

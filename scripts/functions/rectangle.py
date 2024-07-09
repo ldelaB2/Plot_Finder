@@ -278,7 +278,7 @@ def compute_score(img, model, method = "euclidean"):
         return np.linalg.norm(img - model)
     
     elif method == "SSIM":
-        score, diff = ssim(img, model, full = True)
+        score = ssim(img, model, full = False)
         return score
 
     else:
