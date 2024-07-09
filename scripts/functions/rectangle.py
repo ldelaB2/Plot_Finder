@@ -275,10 +275,15 @@ def compute_score(img, model, method = "euclidean"):
             return cosine_similarity
 
     elif method == "euclidean":
-        return np.linalg.norm(img - model)
+        score = np.linalg.norm(img - model, 2)
+        return score
     
     elif method == "SSIM":
         score = ssim(img, model, full = False)
+        return score
+    
+    elif method == "L1":
+        score = np.linalg.norm(img - model, 1)
         return score
 
     else:

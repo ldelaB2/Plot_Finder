@@ -6,14 +6,9 @@ from functions.display import disp_spiral_path
 from tqdm import tqdm
 import cv2 as cv
 import random
-from keras.applications.vgg16 import VGG16
-from keras.models import Model
-from functions.image_processing import resize_and_pad
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import pairwise_distances
 import matplotlib.pyplot as plt
+from functions.general import bindvec
 
 
 def build_rect_list(rect_list, img):
@@ -51,75 +46,9 @@ def compute_model(rect_list, initial = False, threshold = False):
         sub_img = rect.create_sub_image()
         model += sub_img
 
-    model = np.round(model / len(rect_list)).astype(int)
-    """
-    dx = []
-    dy = []
-    for rect in rect_list:
-        x, y = compute_shift(rect)
-        dx.append(x)
-        dy.append(y)
-
-    dx = np.array(dx)
-    dy = np.array(dy)
-    computed_dist = np.sqrt(dx**2 + dy**2)
-
-    good_indx = np.where(computed_dist < np.mean(computed_dist))[0]
-
-    for indx in good_indx:
-        rect_list[indx].center_x += dx[indx]
-        rect_list[indx].center_y += dy[indx]
-        sub_img = rect_list[indx].create_sub_image()
-        model += sub_img
-
-    model = np.round(model / len(good_indx)).astype(int) 
-    """
+    model = np.round(model / len(rect_list)).astype(np.uint8)
     
     return model
-
-def compute_shift(rect, tol = .001, shift = 10):
-    # Create the current img and center
-    current = rect.create_sub_image()
-    center_x = np.round(current.shape[1] / 2).astype(int)
-    center_y = np.round(current.shape[0] / 2).astype(int)
-
-    x_left = rect.move_rectangle(-shift,0,0)
-    x_right = rect.move_rectangle(shift,0,0)
-    y_up = rect.move_rectangle(0,shift,0)
-    y_down = rect.move_rectangle(0,-shift,0)
-
-    img_list = [x_left, x_right, y_up, y_down]
-    y_shift = []
-    x_shift = []
-
-    for cnt, img in enumerate(img_list):
-        flow = cv.calcOpticalFlowFarneback(current, img, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-
-        if cnt < 2:
-            if cnt == 1:
-                flow = -flow
-            indx = np.where(flow[...,0] > shift * (1 - tol))
-            if indx[0].size > 2:
-                mean_x = np.mean(indx[1])
-                calc_shift = np.round(mean_x - center_x).astype(int)
-            else:
-                calc_shift = 0
-            x_shift.append(calc_shift)
-        else:
-            if cnt == 2:
-                flow = -flow
-            indx = np.where(flow[...,1] > shift * (1 - tol))
-            if indx[0].size > 2:
-                mean_y = np.mean(indx[0])
-                calc_shift = np.round(mean_y - center_y).astype(int)
-            else:
-                calc_shift = 0
-            y_shift.append(calc_shift)
-
-    x_shift = np.round(np.mean(x_shift)).astype(int)
-    y_shift = np.round(np.mean(y_shift)).astype(int)
-        
-    return x_shift, y_shift
 
 def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rectangles"):
     # Pull the parameters
@@ -127,32 +56,35 @@ def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rec
     y_radi = opt_param_dict['y_radi']
     num_points = opt_param_dict['quadratic_num_points']
 
+    num_sample = np.sqrt(num_points).astype(int)
+
     # Create the test points
-    x = np.round(np.linspace(-x_radi, x_radi, num_points)).astype(int)
-    y = np.round(np.linspace(-y_radi, y_radi, num_points)).astype(int)
+    x = np.round(np.linspace(-x_radi, x_radi, num_sample)).astype(int)
+    y = np.round(np.linspace(-y_radi, y_radi, num_sample)).astype(int)
 
-    # Remove the zeros
-    x = x[x != 0]
-    y = y[y != 0]
-
-    # Only keep unique values
-    x = np.unique(x)
-    y = np.unique(y)
-
+    # Create the meshgrid
     X, Y = np.meshgrid(x, y)
     test_points = np.column_stack((X.ravel(), Y.ravel()))
-    test_points = np.hstack((test_points, np.zeros((X.size, 1))))
+
+    # Remove the origin if it exists
+    test_points = test_points[np.where((test_points[:,0] != 0) | (test_points[:,1] != 0))]
+
+    # Only keep unique values
+    test_points = np.unique(test_points, axis = 0)
+
     # Push to the dictionary
     opt_param_dict['test_points'] = test_points
-    opt_param_dict['test_y'] = y
-    opt_param_dict['test_x'] = x
 
     # Pull the threshold
     threshhold = opt_param_dict['threshhold']
     max_epoch = opt_param_dict['max_epoch']
+
+    # Define the kernel radi size
+    kernel_radi = [2, 2]
     
     num_updated = np.inf
     epoch = 1
+    model = bindvec(model)
     while num_updated > threshhold and epoch <= max_epoch:
         print(f"{txt} Starting Epoch {epoch}")
 
@@ -168,63 +100,96 @@ def sparse_optimize_list(rect_list, model, opt_param_dict, txt = "Optimizing Rec
 
             results.append(tmp_flag)
 
-        #num_updated = np.sum(results)
+        num_updated = np.sum(results)
         print(f"Updated {num_updated} rectangles")
+
+        distance_optimize(rect_list, kernel_radi, weight = .8)
 
         epoch += 1
     
     return
 
-def final_optimize_list(rect_list, model, opt_param_dict, epoch):
-    total = len(rect_list)
+def final_optimize_list(rect_list, opt_param_dict):
+    # Pull the parameters
+    x_radi = opt_param_dict['x_radi']
+    y_radi = opt_param_dict['y_radi']
+    t_radi = opt_param_dict['theta_radi']
+    num_points = opt_param_dict['quadratic_num_points']
 
-    for cnt in range(epoch):
-        txt = f"Non Linear Model Optimization {cnt + 1}/{epoch}"
+    num_sample = np.power(num_points, 1/3).astype(int)
+
+    # Create the test points
+    x = np.round(np.linspace(-x_radi, x_radi, num_sample)).astype(int)
+    y = np.round(np.linspace(-y_radi, y_radi, num_sample)).astype(int)
+    t = np.round(np.linspace(-t_radi, t_radi, num_sample)).astype(int)
+
+    # Create the meshgrid
+    X, Y, T = np.meshgrid(x, y, t)
+    test_points = np.column_stack((X.ravel(), Y.ravel(), T.ravel()))
+
+    # Remove the origin if it exists
+    test_points = test_points[np.where((test_points[:,0] != 0) | (test_points[:,1] != 0) | (test_points[:,2] != 0))]
+
+    # Only keep unique values
+    test_points = np.unique(test_points, axis = 0)
+
+    # Push to the dictionary
+    opt_param_dict['test_points'] = test_points
+
+    # Pull the threshold
+    threshhold = opt_param_dict['threshhold']
+    max_epoch = opt_param_dict['max_epoch']
+    kernel_radi = [2, 2]
+
+    for epoch in range(max_epoch):
+        print(f"Final Optimization Starting Epoch {epoch + 1}/{max_epoch}")
+        model = compute_model(rect_list)
+        total = len(rect_list)
         results = []
 
-        for rect in tqdm(rect_list, total = total, desc = txt):
+        for rect in tqdm(rect_list, total = total, desc = "Final Optimization"):
             tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
             results.append(tmp_flag)
-        
+    
         num_updated = np.sum(results)
         print(f"Updated {num_updated} rectangles")
 
-    print("Finished Model Optimization")
+        distance_optimize(rect_list, kernel_radi, weight = .5)
+        
     return
 
 
-def set_range_row(rect_list, num_ranges, num_rows):
-    center_x = np.array([rect.center_x for rect in rect_list])
-    center_y = np.array([rect.center_y for rect in rect_list])
+def set_range_row(rect_list):
+    ranges = []
+    rows = []
+    center_x = []
+    center_y = []
+    for rect in rect_list:
+        ranges.append(rect.range)
+        rows.append(rect.row)
+        center_x.append(rect.center_x)
+        center_y.append(rect.center_y)
+    
+    unique_ranges = np.unique(ranges)
+    unique_rows = np.unique(rows)
+    avg_rng_y = []
+    for rng in unique_ranges:
+        indx = np.where(np.array(ranges) == rng)[0]
+        avg_rng_y.append(np.mean(np.array(center_y)[indx]))
 
-    row_cluster = KMeans(n_clusters = num_rows, n_init = 1000, max_iter = 200)
-    rows = row_cluster.fit_predict(center_x.reshape(-1,1))
+    avg_row_x = []
+    for row in unique_rows:
+        indx = np.where(np.array(rows) == row)[0]
+        avg_row_x.append(np.mean(np.array(center_x)[indx]))
 
-    range_cluster = KMeans(n_clusters = num_ranges, n_init = 1000, max_iter = 200)
-    ranges = range_cluster.fit_predict(center_y.reshape(-1,1))
+    sorted_ranges = unique_ranges[np.argsort(avg_rng_y)]
+    sorted_rows = unique_rows[np.argsort(avg_row_x)]
 
-    # Make sure row clusters are in order
-    row_centroids = row_cluster.cluster_centers_.flatten()
-    row_ordered_indices = np.argsort(row_centroids)
-    new_rows = np.zeros_like(rows)
-    for i in range(num_rows):
-        indx = np.where(rows == i)[0]
-        new_indx = np.argwhere(row_ordered_indices == i)[0][0]
-        new_rows[indx] = new_indx
-
-    # Make sure range clusters are in order
-    range_centroids = range_cluster.cluster_centers_.flatten()
-    range_ordered_indices = np.argsort(range_centroids)
-    new_ranges = np.zeros_like(ranges)
-    for i in range(num_ranges):
-        indx = np.where(ranges == i)[0]
-        new_indx = np.argwhere(range_ordered_indices == i)[0][0]
-        new_ranges[indx] = new_indx
-
-    # Set the range and row values for each rectangle
-    for e, rect in enumerate(rect_list):
-        rect.range = new_ranges[e]
-        rect.row = new_rows[e]
+    for rect in rect_list:
+        rng_indx = np.where(sorted_ranges == rect.range)[0][0]
+        row_indx = np.where(sorted_rows == rect.row)[0][0]
+        rect.range = rng_indx
+        rect.row = row_indx
         rect.ID = f"{rect.range}_{rect.row}"
 
     return
@@ -262,8 +227,14 @@ def find_expected_center(current_rect, neighbor_rect):
     nbr_center = np.array([neighbor_rect.center_x, neighbor_rect.center_y])
 
     # Find the distance between the rectangles
-    rng_away = cnt_rng - nbr_rng
-    row_away = cnt_row - nbr_row
+    rng_away = abs(cnt_rng - nbr_rng)
+    row_away = abs(cnt_row - nbr_row)
+
+    if nbr_row > cnt_row:
+        row_away = -row_away
+    if nbr_rng > cnt_rng:
+        rng_away = -rng_away
+
 
     # Find the expected center
     dx = row_away * neighbor_rect.width
@@ -330,7 +301,6 @@ def compute_spiral_path(rect_list):
     center_coord = find_center(rect_list)
     polar_coords = compute_polar_coordinates(rect_list, center_coord)
     path = sort_polar_coordinates(polar_coords)
-    print("Finished computing spiral path")
 
     return path
 
@@ -340,7 +310,9 @@ def compute_neighbors(rect_list, kernel):
     ranges = np.array([rect.range for rect in rect_list])
     rows = np.array([rect.row for rect in rect_list])
     max_range = np.max(ranges)
+    min_range = np.min(ranges)
     max_row = np.max(rows)
+    min_row = np.min(rows)
     for rect in rect_list:
         # Find self range and row
         rng = rect.range
@@ -351,8 +323,8 @@ def compute_neighbors(rect_list, kernel):
         row_neighbors = np.arange(row - kernel[1], row + kernel[1] + 1)
 
         # Clip the neighbors to valid values
-        rng_neighbors = np.unique(np.clip(rng_neighbors, 1, max_range))
-        row_neighbors = np.unique(np.clip(row_neighbors, 1, max_row))
+        rng_neighbors = np.unique(np.clip(rng_neighbors, min_range, max_range))
+        row_neighbors = np.unique(np.clip(row_neighbors, min_row, max_row))
 
         # Create the neighbor list
         x, y = np.meshgrid(rng_neighbors, row_neighbors)
@@ -364,13 +336,19 @@ def compute_neighbors(rect_list, kernel):
         tmp_neighbors = tmp_neighbors.tolist()
         rect.neighbors = tmp_neighbors
 
-    print("Finished computing neighbors")
     return
 
-def distance_optimize(rect_list, spiral_path):
+def distance_optimize(rect_list, kernel, weight = .5):
+    # Compute the spiral path
+    spiral_path = compute_spiral_path(rect_list)
+
+    #Compute the neighbors
+    compute_neighbors(rect_list, kernel)
+
     # Find the range and row values
     ranges = np.array([rect.range for rect in rect_list])
     rows = np.array([rect.row for rect in rect_list])
+
     for point in spiral_path:
         path_rng = point[0]
         path_row = point[1]
@@ -392,8 +370,15 @@ def distance_optimize(rect_list, spiral_path):
         # Compute the geometric median
         new_center = geometric_median(expected_centers)
         new_center = np.round(new_center).astype(int)
-        current_rect.center_x = new_center[0]
-        current_rect.center_y = new_center[1]
+
+        dx = new_center[0] - current_rect.center_x
+        dy = new_center[1] - current_rect.center_y
+
+        dx = np.round(dx * weight).astype(int)
+        dy = np.round(dy * weight).astype(int)
+
+        current_rect.center_x += dx
+        current_rect.center_y += dy
 
     print("Finished optimizing distance")
     return

@@ -9,7 +9,7 @@ from functions.optimization import build_rect_list, compute_model, sparse_optimi
 from functions.display import disp_rectangles
 from functions.optimization import compute_spiral_path, compute_neighbors, distance_optimize
 import numpy as np
-from functions.optimization import final_optimize_list
+from functions.optimization import final_optimize_list, center_model
 
 
 class wavepad:
@@ -63,15 +63,12 @@ class wavepad:
         
         # Building the rect list and model
         self.initial_rect_list = build_rect_list(initial_rect_list, self.img)
-        
+        self.initial_model = compute_model(self.initial_rect_list)
+        #self.initial_model = center_model(self.initial_model)
         
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
         self.rows_2_find = row_cnt - initial_row_cnt
-
-        self.initial_model = compute_model(self.initial_rect_list)
-        # Optimize initial rectangles before adding
-        self.sparse_optimize(self.initial_rect_list, txt = "Initial Optimization")
 
         print("Finished Finding Center Lines and Initial Rectangles")
 
@@ -89,7 +86,8 @@ class wavepad:
             print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
             self.remove_rectangles("row", abs(self.rows_2_find))
         
-       
+       # Optimize initial rectangles before adding
+        self.sparse_optimize(self.initial_rect_list, txt = "Initial Optimization")
         # Recompute the model
         self.initial_model = compute_model(self.initial_rect_list)
 
@@ -161,12 +159,13 @@ class wavepad:
     def sparse_optimize(self, rect_list, txt):
         opt_param_dict = {}
         opt_param_dict['method'] = 'quadratic'
-        opt_param_dict['x_radi'] = 10
-        opt_param_dict['y_radi'] = 10
-        opt_param_dict['quadratic_num_points'] = 15
-        opt_param_dict['optimization_loss'] = 'euclidean'
-        opt_param_dict['threshhold'] = 3
-        opt_param_dict['max_epoch'] = 10
+        opt_param_dict['x_radi'] = 20
+        opt_param_dict['y_radi'] = 50
+        opt_param_dict['quadratic_num_points'] = 100
+
+        opt_param_dict['optimization_loss'] = "L1"
+        opt_param_dict['threshhold'] = np.round(len(rect_list) * .1).astype(int)
+        opt_param_dict['max_epoch'] = 3
 
         sparse_optimize_list(rect_list, self.initial_model, opt_param_dict, txt = txt)
 
@@ -233,35 +232,17 @@ class wavepad:
 
 
     def phase_six(self):
-        # Define the kernel radi size
-        kernel_radi = [2, 2]
-
-        # Compute the spiral path
-        spiral_path = compute_spiral_path(self.final_rect_list)
-
-        # Compute the neighbors
-        compute_neighbors(self.final_rect_list, kernel_radi)
-
         # Final Optimization
-        meta_epoch = 3
-        model_epoch = 1
-
         opt_param_dict = {}
-        opt_param_dict['method'] = 'SA'
+        opt_param_dict['method'] = 'quadratic'
         opt_param_dict['x_radi'] = 20
         opt_param_dict['y_radi'] = 20
         opt_param_dict['theta_radi'] = 5
-        opt_param_dict['optimization_loss'] = "euclidean"
-        opt_param_dict['maxiter'] = 1000
-        opt_param_dict['swarm_size'] = 50
+        opt_param_dict['optimization_loss'] = "L1"
+        opt_param_dict['threshhold'] = np.round(len(self.final_rect_list) * .1).astype(int)
+        opt_param_dict['max_epoch'] = 3
+        opt_param_dict['quadratic_num_points'] = 400
         
-        for meta_cnt in range(meta_epoch):
-            print(f"Final Optimization Meta Epoch {meta_cnt + 1}/{meta_epoch}")
-            # Apply the Distance optimization
-            distance_optimize(self.final_rect_list, spiral_path)
+        final_optimize_list(self.final_rect_list, opt_param_dict)
 
-            # Apply model optimization
-            final_optimize_list(self.final_rect_list, self.initial_model, opt_param_dict, model_epoch)
-            print("T")
-
-        print("T")
+        print("Finished Final Optimization")

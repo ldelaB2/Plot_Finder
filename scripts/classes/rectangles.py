@@ -10,8 +10,8 @@ from functions.general import minimize_quadratic
 import random
 import cv2 as cv
 from functions.optimization_models import simulated_annealing
-from keras.applications.vgg16 import VGG16
-from keras.models import Model
+from scipy.optimize import minimize
+from functions.general import bindvec
 
 class rectangle:
     def __init__(self, rect):
@@ -73,97 +73,36 @@ class rectangle:
         return update_flag
     
     def optomize_rectangle_quadratic(self, model, param_dict):
-        x_test = param_dict['test_x']
-        y_test = param_dict['test_y']
         loss = param_dict['optimization_loss']
-        eigen_vectors = param_dict['eigenvec']
+        test_points = param_dict['test_points']
 
-        base_model = VGG16(weights = 'imagenet', include_top = False, input_shape = (224, 224, 3))
-        cnn_model = Model(inputs = base_model.input, outputs = base_model.get_layer('block5_conv1').output)
-
-        mean_model = np.mean(model, axis = 0)
-
-        test = np.linspace(-200,200,20)
-        scores = []
-        for point in test:
-            new_img = self.move_rectangle(point,0, 0)
-            new_img = cv.resize(new_img, (224, 224))
-            new_img = np.expand_dims(new_img, axis = 0)
-            features = cnn_model.predict(new_img)
-            features = features.flatten()
-            distance = np.linalg.norm(model - features)
-            scores.append(distance)
-
-
-
-
-
-
-
-
-        def compute_score_wrapper(direction):
-            # Compute the original score
-            #original_score = compute_score(self.create_sub_image(), model, method = loss)
-            scores = []
-            update_flag = False
-            
+        # Coompute the current objective function
+        current_score = compute_score(self.create_sub_image(), model, method = loss)
         
-            if direction == 'x':
-                # Compute the scores for the x direction
-                for point in x_test:
-                    new_img = self.move_rectangle(point, 0, 0)
-                    new_img = cv.resize(new_img, (224, 224))
-                    new_img = np.expand_dims(new_img, axis = 0)
+        # Compute the objective function
+        obj_val = []
+        for point in test_points:
+            new_img = self.move_rectangle(point[0], point[1], 0)
+            new_img = bindvec(new_img)
+            tmp_score = compute_score(new_img, model, method = loss)
+            obj_val.append(tmp_score)
 
-                    features = cnn_model.predict(new_img)
-                    features = features.flatten()
+        # Fit the multivariate quadratic
+        #test_points = np.array(test_points)
+        #X = np.c_[test_points[:,0]**2, test_points[:,1]**2, test_points[:,0]*test_points[:,1], test_points[:,0], test_points[:,1], np.ones(test_points.shape[0])]
+        #coeffs = np.linalg.lstsq(X, obj_val, rcond=None)[0]
+        
+        fmin = np.min(obj_val)
+        xopt = test_points[np.argmin(obj_val)]
 
-                    tmp_score = compute_score(new_img, model, method = loss)
-                    scores.append(tmp_score)
-
-                # Minimize the quadratic
-                best_x_val = x_test[np.argmin(scores)]
-                best_x_score = np.min(scores)
-                
-                # Update the rectangle if the new score is better
-                if best_x_score < original_score:
-                    update_flag = True
-                    self.center_x = self.center_x + best_x_val
-            
-            elif direction == 'y':
-                # Compute the scores for the y direction
-                for point in y_test:
-                    new_img = self.move_rectangle(0, point, 0)
-                    tmp_score = compute_score(new_img, model, method = loss)
-                    scores.append(tmp_score)
-
-                # Minimize the quadratic
-                best_y_val = y_test[np.argmin(scores)]
-                best_y_score = np.min(scores)
-                
-                # Update the rectangle if the new score is better
-                if best_y_score < original_score:
-                    update_flag = True
-                    self.center_y = self.center_y + best_y_val
-
-            else:
-                print("Direction not recognized")
-                return update_flag
-                
-            return update_flag
-
-        """
-        update_flag_x = compute_score_wrapper('x')
-        update_flag_y = compute_score_wrapper('y')
-
-        if update_flag_x or update_flag_y:
+        if fmin < current_score:
+            self.center_x += xopt[0]
+            self.center_y += xopt[1]
             update_flag = True
         else:
-           update_flag = False
-
-        """
+            update_flag = False
         
-        return #update_flag
+        return update_flag
 
 
          
@@ -182,6 +121,7 @@ class rectangle:
             dX, dY, dTheta = x
         
             test_img = self.move_rectangle(dX, dY, dTheta)
+            test_img = bindvec(test_img)
             dist = compute_score(test_img, model, method = loss)
 
             return dist
@@ -234,6 +174,7 @@ class rectangle:
             dX, dY, dTheta = x
         
             test_img = self.move_rectangle(dX, dY, dTheta)
+            test_img = bindvec(test_img)
             dist = compute_score(test_img, model, method = loss)
             return dist,
         
@@ -296,6 +237,7 @@ class rectangle:
             dX, dY, dTheta = x
         
             test_img = self.move_rectangle(dX, dY, dTheta)
+            test_img = bindvec(test_img)
             dist = compute_score(test_img, model, method = loss)
 
             return dist
