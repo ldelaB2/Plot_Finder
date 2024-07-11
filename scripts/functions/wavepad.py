@@ -2,8 +2,9 @@ import cv2 as cv
 import numpy as np
 from scipy.optimize import dual_annealing
 from scipy.stats import poisson
-from functions.general import find_mode, find_consecutive_in_range
-import matplotlib.pyplot as plt
+
+from functions.general import find_consecutive_in_range
+from functions.image_processing import find_correct_sized_obj
 
 def hist_filter_wavepad(wavepad):
     def model_function(x, lambda1, lambda2, p):
@@ -61,6 +62,14 @@ def filter_wavepad(wavepad, method = "otsu"):
     return binary_wavepad
 
 def trim_boarder(img, direction):
+    if direction == "range":
+        direction = 0
+    elif direction == "row":
+        direction = 1
+    else:
+        print("Invalid direction")
+        exit()
+
     t_sum = np.sum(img, axis = direction)
     t_mean = np.mean(t_sum[t_sum != 0]).astype(int)
     lower_bound = t_mean - 50
@@ -79,6 +88,14 @@ def trim_boarder(img, direction):
     return img
 
 def find_center_line(img, poly_degree, direction):
+    if direction == "range":
+        direction = 1
+    elif direction == "row":
+        direction = 0
+    else:
+        print("Invalid direction")
+        exit()
+
     num_obj, labeled_img, _, _ = cv.connectedComponentsWithStats(img)
     skel = np.zeros_like(img)
 
@@ -104,6 +121,14 @@ def find_center_line(img, poly_degree, direction):
     return skel
 
 def impute_skel(skel, direction):
+    if direction == "range":
+        direction = 0
+    elif direction == "row":
+        direction = 1
+    else:
+        print("Invalid direction")
+        exit()
+
     if direction == 1:
         skel = skel.T
     
@@ -150,3 +175,23 @@ def impute_skel(skel, direction):
         skel = skel.T
 
     return skel
+
+def process_wavepad(args):
+    wavepad, filter_method, poly_degree, direction = args
+
+    # Filter the wavepad
+    filtered_wavepad = filter_wavepad(wavepad, filter_method)
+
+    # Trim the boarder
+    trimmed_wavepad = trim_boarder(filtered_wavepad, direction)
+
+    # Find correct sized objects
+    correct_sized_wavepad = find_correct_sized_obj(trimmed_wavepad)
+
+    # Find the center line
+    center_line = find_center_line(correct_sized_wavepad, poly_degree, direction)
+
+    # Impute the skeleton
+    imputed_skel = impute_skel(center_line, direction)
+
+    return imputed_skel

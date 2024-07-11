@@ -1,20 +1,21 @@
 from matplotlib import pyplot as plt
 import numpy as np
+import multiprocessing, os
+
+from classes.sub_image import sub_image
+from classes.wave_pad import wavepad
 from functions.pre_processing import create_g, rotate_img
 from functions.image_processing import build_path
 from functions.general import create_shapefile
-from classes.sub_image import sub_image
-from classes.wave_pad import wavepad
-import multiprocessing, os
 
 
 class find_plots():
     def __init__(self, plot_finder_job):
         self.pf_job = plot_finder_job
-        self.pre_process()
-        self.phase_one()
-        self.phase_two()
-        self.phase_three()
+        self.pre_process() # Rotate the image and create the g image
+        self.phase_one() # Create the sparse grid and find the dominant frequencies
+        self.phase_two() # Create the fine grid and find the wavepad
+        self.phase_three() # Find the plots
 
     def pre_process(self):
         # Creating the g image

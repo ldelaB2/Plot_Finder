@@ -2,9 +2,10 @@ import numpy as np
 import cv2 as cv
 import geopandas as gpd
 from matplotlib import pyplot as plt
-from functions.rectangle import four_2_five_rect
+
+from functions.image_processing import four_2_five_rect
 from functions.optimization import build_rect_list
-from functions.rectangle import set_range_row, set_id
+from functions.rect_list import set_range_row, set_id
 from functions.display import disp_rectangles
 
 class optimize_plots:

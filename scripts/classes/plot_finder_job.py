@@ -34,7 +34,6 @@ class plot_finder_job:
         if self.params["optimize_plots"] == True:
             # Optimizing the plots
             optimize_plots(self)
-            pass
 
         self.print_plot_finder_logo(intro = False)
 

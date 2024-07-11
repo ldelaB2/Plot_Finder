@@ -4,13 +4,10 @@ from matplotlib import pyplot as plt
 from scipy.optimize import dual_annealing, Bounds
 from deap import base, creator, tools, algorithms
 from pyswarm import pso
-from functions.image_processing import create_unit_square, extract_rectangle
-from functions.rectangle import five_2_four_rect, compute_score
-from functions.general import minimize_quadratic
 import random
-import cv2 as cv
-from functions.optimization_models import simulated_annealing
-from scipy.optimize import minimize
+
+from functions.image_processing import extract_rectangle, five_2_four_rect
+from functions.optimization import compute_score
 from functions.general import bindvec
 
 class rectangle:
@@ -31,8 +28,7 @@ class rectangle:
         self.img = None
         self.model = None
         self.flagged = False
-        self.initial_opt = False
-        self.final_opt = False
+        self.added = False
         self.ID = None
         self.unit_sqr = None
         self.neighbors = None
@@ -55,7 +51,6 @@ class rectangle:
         
         return new_img
 
-
     def optomize_rectangle(self, model, param_dict):
         method = param_dict['method']
         
@@ -77,12 +72,14 @@ class rectangle:
         test_points = param_dict['test_points']
 
         # Coompute the current objective function
-        current_score = compute_score(self.create_sub_image(), model, method = loss)
+        current_img = self.create_sub_image()
+        current_img = bindvec(current_img)
+        current_score = compute_score(current_img, model, method = loss)
         
         # Compute the objective function
         obj_val = []
         for point in test_points:
-            new_img = self.move_rectangle(point[0], point[1], 0)
+            new_img = self.move_rectangle(point[0], point[1], point[2])
             new_img = bindvec(new_img)
             tmp_score = compute_score(new_img, model, method = loss)
             obj_val.append(tmp_score)
@@ -98,14 +95,13 @@ class rectangle:
         if fmin < current_score:
             self.center_x += xopt[0]
             self.center_y += xopt[1]
+            self.theta += xopt[2]
+            
             update_flag = True
         else:
             update_flag = False
         
         return update_flag
-
-
-         
 
     def optomize_rectangle_pso(self, model, param_dict):
         # Pull the params
@@ -150,8 +146,6 @@ class rectangle:
             update_flag = True
             return update_flag
     
-        
-
     def optomize_rectangle_ga(self, model, param_dict):
         x_radi = param_dict['x_radi']
         y_radi = param_dict['y_radi']

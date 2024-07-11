@@ -118,3 +118,6 @@ def disp_distance_change(expected_centers, geometric_mean, current_center):
     plt.scatter(current_center[0], current_center[1], c = 'b', label = 'Current Center')
     plt.legend()
     plt.show()
+
+def disp_quadratic(test_points, coeffs):
+    print("T")

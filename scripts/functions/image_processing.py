@@ -125,22 +125,37 @@ def find_correct_sized_obj(img):
 
     return filtered_img
 
+def four_2_five_rect(points):
+    top_left, top_right, bottom_left, bottom_right = points
+    w1 = np.linalg.norm(top_left - top_right)
+    w2 = np.linalg.norm(bottom_left - bottom_right)
+    h1 = np.linalg.norm(top_left - bottom_left)
+    h2 = np.linalg.norm(top_right - bottom_right)
+    width = ((w1 + w2)/2).astype(int)
+    height = ((h1 + h2)/2).astype(int)
 
-def resize_and_pad(img, target_size):
-        original_size = img.shape[:2]
-        ratio = float(target_size) / max(original_size)
+    # Computing theta
+    dx1 = top_right[1] - top_left[1]
+    dy1 = top_right[0] - top_left[0]
+    dx2 = bottom_right[1] - bottom_left[1]
+    dy2 = bottom_right[0] - bottom_left[0]
 
-        new_size = tuple([int(x * ratio) for x in original_size])
+    theta1 = np.arctan2(dy1, dx1)
+    theta2 = np.arctan2(dy2, dx2)
+    theta = (theta1 + theta2) / 2
+    theta = np.degrees(theta)
+    theta = np.round(theta).astype(int)
 
-        resized_img = cv.resize(img, (new_size[1], new_size[0]))
+    center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
+    rect = np.append(center, [width, height, theta])
 
-        padded_img = np.zeros((target_size, target_size, 3), dtype = np.uint8)
+    return rect
 
-        # Calculate the poistion to place the image
-        x_offset = (target_size - new_size[1]) // 2
-        y_offset = (target_size - new_size[0]) // 2
+def five_2_four_rect(points):
+    center_x, center_y, width, height, theta = points
+    points = np.array([[-1,1,1], [1,1,1], [1,-1,1], [-1,-1,1]])
+    aff_mat = create_affine_frame(center_x, center_y, np.radians(theta), width, height)
+    corner_points = np.dot(aff_mat, points.T).T
+    corner_points = corner_points[:,:2].astype(int)
 
-        # Paste the resized image onto the padded image
-        padded_img[y_offset:y_offset + new_size[0], x_offset:x_offset + new_size[1]] = resized_img
-
-        return padded_img
+    return corner_points
