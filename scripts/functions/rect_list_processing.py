@@ -193,7 +193,7 @@ def double_check(rect_list, direction, model, opt_param_dict):
         update_flag, next_best_list, current_best_list = compare_next_to_current(rect_list, model, direction, opt_param_dict)
         if update_flag:
             # Remove the current best list and add the next best list
-            rect_list = remove_rectangles(rect_list, current_best_list)
+            rect_list = remove_rectangles_from_list(rect_list, current_best_list)
             for rect in next_best_list:
                 rect_list.append(rect)
 

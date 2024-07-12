@@ -5,8 +5,8 @@ from tqdm import tqdm
 from classes.rectangles import rectangle
 from functions.image_processing import create_unit_square, four_2_five_rect
 from functions.distance_optimize import distance_optimize
-from functions.display import dialate_skel
-from functions.optimization import compute_model
+from functions.display import dialate_skel, disp_quadratic_optimization
+from functions.optimization import compute_model, shrink_rect
 
 def build_rect_list(range_skel, row_skel, img):
         rect_list, num_ranges, num_rows = build_rectangles(range_skel, row_skel)
@@ -73,6 +73,72 @@ def sparse_optimize(rect_list, model, opt_param_dict):
     y_radi = opt_param_dict['y_radi']
     num_points = opt_param_dict['quadratic_num_points']
 
+    # Compute the test points
+    test_points, total_points = compute_points(x_radi, y_radi, num_points)
+
+    # Push to the dictionary
+    opt_param_dict['test_points'] = test_points
+
+    # Pull the number of epochs and kernel radii
+    max_epoch = opt_param_dict['max_epoch']
+    kernel_radi = opt_param_dict['kernel_radi']
+
+    print("Starting Sparse Optimization")
+    results = []
+    for rect in rect_list:
+        tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
+        results.append(tmp_flag)
+
+    num_updated = np.sum(results)
+    print(f"Updated {num_updated} rectangles")
+
+    distance_optimize(rect_list, kernel_radi, weight = .8, update = True)
+
+    
+    return
+
+def final_optimize(rect_list, opt_param_dict):
+    # Pull the parameters
+    x_radi = opt_param_dict['x_radi']
+    y_radi = opt_param_dict['y_radi']
+    t_radi = opt_param_dict['theta_radi']
+    num_points = opt_param_dict['quadratic_num_points']
+
+    # Compute the test points
+    test_points, total_points = compute_points(x_radi, y_radi, num_points)
+
+    print(f"Using {test_points.shape[0]} test points")
+    print(f"Using {total_points.shape[0]} total points")
+    # Push to the dictionary
+    opt_param_dict['test_points'] = test_points
+    opt_param_dict['total_points'] = total_points
+    kernel_radi = opt_param_dict['kernel_radi']
+    
+    print(f"Starting Final Optimization")
+    model = compute_model(rect_list)
+    total = len(rect_list)
+    position_update = []
+    theta_update = []
+
+    for rect in tqdm(rect_list, total = total, desc = "Final Optimization"):
+        pos_flag = rect.optomize_rectangle(model, opt_param_dict)
+        theta_flag = rect.optomize_rectangle_theta(model, opt_param_dict)
+        shrink_rect(rect, model, opt_param_dict)
+        position_update.append(pos_flag)
+        theta_update.append(theta_flag)
+
+    print(f"Updated position of {np.sum(position_update)} rectangles")
+    print(f"Updated theta of {np.sum(theta_update)} rectangles")
+    #Recompute the model
+    distance_optimize(rect_list, kernel_radi, weight = .5, update = True)
+
+    print("Finished Final Optimization")
+        
+    return
+
+
+
+def compute_points(x_radi, y_radi, num_points):
     y_ratio = y_radi / x_radi
 
     x_num_sample = np.power(num_points / y_ratio, 1/2)
@@ -85,7 +151,7 @@ def sparse_optimize(rect_list, model, opt_param_dict):
 
     # Create the meshgrid
     X, Y = np.meshgrid(x, y)
-    test_points = np.column_stack((X.ravel(), Y.ravel(), np.zeros_like(X.ravel())))
+    test_points = np.column_stack((X.ravel(), Y.ravel()))
 
     # Remove the origin if it exists
     test_points = test_points[np.where((test_points[:,0] != 0) | (test_points[:,1] != 0))]
@@ -93,92 +159,13 @@ def sparse_optimize(rect_list, model, opt_param_dict):
     # Only keep unique values
     test_points = np.unique(test_points, axis = 0)
 
-    # Push to the dictionary
-    opt_param_dict['test_points'] = test_points
-
-    # Pull the number of epochs and kernel radii
-    max_epoch = opt_param_dict['max_epoch']
-    kernel_radi = opt_param_dict['kernel_radi']
+    # Create the total points
+    x_total = np.arange(-x_radi, x_radi, 2)
+    y_total = np.arange(-y_radi, y_radi, 2)
+    X, Y, = np.meshgrid(x_total, y_total)
+    total_points = np.column_stack((X.ravel(), Y.ravel()))
     
-    epoch = 1
-    while epoch <= max_epoch:
-        print(f"Sparse Optimization Starting Epoch {epoch}")
-
-        results = []
-        for rect in rect_list:
-            tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
-            results.append(tmp_flag)
-
-        num_updated = np.sum(results)
-        print(f"Updated {num_updated} rectangles")
-
-        distance_optimize(rect_list, kernel_radi, weight = .8, update = True)
-
-        epoch += 1
-    
-    return
-
-def final_optimize(rect_list, opt_param_dict):
-    # Pull the parameters
-    x_radi = opt_param_dict['x_radi']
-    y_radi = opt_param_dict['y_radi']
-    t_radi = opt_param_dict['theta_radi']
-    num_points = opt_param_dict['quadratic_num_points']
-
-    # Balance the number of points in each dimension
-    x_t_ratio = x_radi / t_radi
-    y_t_ratio = y_radi / t_radi
-    x_y_ratio = x_radi / y_radi
-
-    t_num_sample = np.power(num_points / (x_t_ratio * y_t_ratio), 1/3).astype(int)
-    if t_num_sample < 3:
-        t_num_sample = 3
-
-    x_num_sample = np.power((num_points / t_num_sample) * x_y_ratio, 1/2).astype(int)
-    y_num_sample = (x_num_sample / x_y_ratio).astype(int)
-
-    # Create the test points
-    x = np.round(np.linspace(-x_radi, x_radi, x_num_sample)).astype(int)
-    y = np.round(np.linspace(-y_radi, y_radi, y_num_sample)).astype(int)
-    t = np.round(np.linspace(-t_radi, t_radi, t_num_sample)).astype(int)
-
-    # Create the meshgrid
-    X, Y, T = np.meshgrid(x, y, t)
-    test_points = np.column_stack((X.ravel(), Y.ravel(), T.ravel()))
-
-    # Remove the origin if it exists
-    test_points = test_points[np.where((test_points[:,0] != 0) | (test_points[:,1] != 0) | (test_points[:,2] != 0))]
-
-    # Only keep unique values
-    test_points = np.unique(test_points, axis = 0)
-
-    print(f"Using {test_points.shape[0]} test points")
-
-    # Push to the dictionary
-    opt_param_dict['test_points'] = test_points
-
-    # Pull the threshold
-    max_epoch = opt_param_dict['max_epoch']
-    kernel_radi = opt_param_dict['kernel_radi']
-
-    for epoch in range(max_epoch):
-        print(f"Final Optimization Starting Epoch {epoch + 1}/{max_epoch}")
-        model = compute_model(rect_list)
-        total = len(rect_list)
-        results = []
-
-        for rect in tqdm(rect_list, total = total, desc = "Final Optimization"):
-            tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
-            results.append(tmp_flag)
-    
-        num_updated = np.sum(results)
-        print(f"Updated {num_updated} rectangles")
-        
-        distance_optimize(rect_list, kernel_radi, weight = .5, update = True)
-
-    print("Finished Final Optimization")
-        
-    return
+    return test_points , total_points
 
 def set_range_row(rect_list):
     range_list = np.array([rect.range for rect in rect_list])
@@ -250,7 +237,4 @@ def set_id(rect_list, start, flow):
             cnt += 1
 
     return
-
-
-
 

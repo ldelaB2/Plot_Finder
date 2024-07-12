@@ -1,10 +1,14 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.optimize import dual_annealing, Bounds
+from scipy.optimize import dual_annealing, Bounds, minimize
 from deap import base, creator, tools, algorithms
 from pyswarm import pso
 import random
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.pipeline import make_pipeline
 
 from functions.image_processing import extract_rectangle, five_2_four_rect
 from functions.optimization import compute_score
@@ -67,6 +71,33 @@ class rectangle:
 
         return update_flag
     
+    def optomize_rectangle_theta(self, model, param_dict):
+        # Pull the params
+        theta_radi = param_dict['theta_radi']
+        loss = param_dict['optimization_loss']
+
+        current_img = self.create_sub_image()
+        current_img = bindvec(current_img)
+        current_score = compute_score(current_img, model, method = loss)
+
+        test_points = np.arange(-theta_radi, theta_radi + 1, 1)
+        obj_val = []
+        for point in test_points:
+            new_img = self.move_rectangle(0, 0, point)
+            new_img = bindvec(new_img)
+            tmp_score = compute_score(new_img, model, method = loss)
+            obj_val.append(tmp_score)
+
+        fopt = np.min(obj_val)
+        xopt = test_points[np.argmin(obj_val)]
+        if fopt < current_score:
+            self.theta += xopt
+            update_flag = True
+        else:
+            update_flag = False
+        
+        return update_flag
+
     def optomize_rectangle_quadratic(self, model, param_dict):
         loss = param_dict['optimization_loss']
         test_points = param_dict['test_points']
@@ -79,24 +110,55 @@ class rectangle:
         # Compute the objective function
         obj_val = []
         for point in test_points:
-            new_img = self.move_rectangle(point[0], point[1], point[2])
+            new_img = self.move_rectangle(point[0], point[1], 0)
             new_img = bindvec(new_img)
             tmp_score = compute_score(new_img, model, method = loss)
             obj_val.append(tmp_score)
 
-        # Fit the multivariate quadratic
-        #test_points = np.array(test_points)
-        #X = np.c_[test_points[:,0]**2, test_points[:,1]**2, test_points[:,0]*test_points[:,1], test_points[:,0], test_points[:,1], np.ones(test_points.shape[0])]
-        #coeffs = np.linalg.lstsq(X, obj_val, rcond=None)[0]
-        
-        fmin = np.min(obj_val)
-        xopt = test_points[np.argmin(obj_val)]
+        if param_dict['preform_optimization']:
+            total_points = param_dict['total_points']
+            npoints_to_test = param_dict['num_points_to_test']
 
-        if fmin < current_score:
+            # Fit the training points
+            test_points = np.array(test_points)
+            # Create the model
+            pred_model = make_pipeline(PolynomialFeatures(degree = 2), RandomForestRegressor(n_estimators=100, n_jobs = 1))
+            pred_model.fit(test_points, obj_val)
+
+            total_obj = pred_model.predict(total_points)
+
+            # Find the best points
+            sorted_indx = np.argsort(total_obj)
+            sorted_indx = sorted_indx[:npoints_to_test]
+
+            # Test the best points
+            fopt = np.inf
+            xopt = None
+            for indx in sorted_indx:
+                point = total_points[indx]
+                new_img = self.move_rectangle(point[0], point[1], 0)
+                new_img = bindvec(new_img)
+                tmp_score = compute_score(new_img, model, method = loss)
+                if tmp_score < fopt:
+                    fopt = tmp_score
+                    xopt = point
+
+
+            # Check if the optimization worked
+            test_fopt = np.min(obj_val)
+            if test_fopt < fopt:
+                xopt = test_points[np.argmin(obj_val)]
+                fopt = np.min(obj_val)
+            else:
+                print("Optimization Worked")
+
+        else:
+            xopt = test_points[np.argmin(obj_val)]
+            fopt = np.min(obj_val)
+
+        if fopt < current_score:
             self.center_x += xopt[0]
             self.center_y += xopt[1]
-            self.theta += xopt[2]
-            
             update_flag = True
         else:
             update_flag = False

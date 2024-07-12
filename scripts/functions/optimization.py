@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import cv2 as cv
 from functions.general import bindvec
 
 
@@ -59,10 +59,53 @@ def compute_score_list(rect_list, model, method):
 
     return final_score
 
+def shrink_rect(rect, model, opt_param):
+    width_shrink = opt_param['width_shrink']
+    height_shrink = opt_param['height_shrink']
+    loss = opt_param['optimization_loss']
 
+    current_img = rect.create_sub_image()
+    current_score = compute_score(bindvec(current_img), model, method = loss)
+    current_height = rect.height
+    current_width = rect.width
 
+    # Shrink the width
+    widths = np.arange(-width_shrink, 0, 1)
+    w_scores = []
+    for width in widths:
+        new_img = current_img[:, abs(width):width:]
+        new_img = cv.resize(new_img, (current_width, current_height))
+        new_img = bindvec(new_img)
+        tmp_score = compute_score(new_img, model, method = loss)
+        w_scores.append(tmp_score)
 
+    fopt = np.min(w_scores)
+    w_opt = widths[np.argmin(w_scores)]
+    if fopt < current_score:
+        rect.width = rect.width + w_opt
+        w_update = True
+    else:
+        w_update = False
 
+    # Shrink the height
+    heights = np.arange(-height_shrink, 0, 1)
+    h_scores = []
+    for height in heights:
+        new_img = current_img[abs(height):height:,:]
+        new_img = cv.resize(new_img, (current_width, current_height))
+        new_img = bindvec(new_img)
+        tmp_score = compute_score(new_img, model, method = loss)
+        h_scores.append(tmp_score)
+
+    fopt = np.min(h_scores)
+    h_opt = heights[np.argmin(h_scores)]
+    if fopt < current_score:
+        rect.height = rect.height + h_opt
+        h_update = True
+    else:
+        h_update = False
+
+    return w_update, h_update
 
 
 

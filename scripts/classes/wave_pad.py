@@ -124,14 +124,20 @@ class wavepad:
         if phase == "sparse":
             opt_param_dict['x_radi'] = 20
             opt_param_dict['y_radi'] = 50
+            opt_param_dict['theta_radi'] = 0
             opt_param_dict['quadratic_num_points'] = 100
             opt_param_dict['max_epoch'] = 1
+            opt_param_dict['preform_optimization'] = False
         elif phase == "fine":
-            opt_param_dict['x_radi'] = 20
-            opt_param_dict['y_radi'] = 50
-            opt_param_dict['theta_radi'] = 2
-            opt_param_dict['max_epoch'] = 3
-            opt_param_dict['quadratic_num_points'] = 500
+            opt_param_dict['x_radi'] = 30
+            opt_param_dict['y_radi'] = 120
+            opt_param_dict['theta_radi'] = 5
+            opt_param_dict['max_epoch'] = 1
+            opt_param_dict['width_shrink'] = 10
+            opt_param_dict['height_shrink'] = 40
+            opt_param_dict['quadratic_num_points'] = 300
+            opt_param_dict['preform_optimization'] = True
+            opt_param_dict['num_points_to_test'] = 100
 
         self.opt_param_dict = opt_param_dict
 
