@@ -9,10 +9,12 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.pipeline import make_pipeline
+import cv2 as cv
 
 from functions.image_processing import extract_rectangle, five_2_four_rect
 from functions.optimization import compute_score
 from functions.general import bindvec
+from functions.image_processing import create_unit_square
 
 class rectangle:
     def __init__(self, rect):
@@ -30,14 +32,18 @@ class rectangle:
             self.row = None
 
         self.img = None
-        self.model = None
         self.flagged = False
         self.added = False
         self.ID = None
         self.unit_sqr = None
         self.neighbors = None
+        self.recompute_unit_sqr = True
 
     def create_sub_image(self):
+        if self.recompute_unit_sqr:
+            self.unit_sqr = create_unit_square(self.width, self.height)
+            self.recompute_unit_sqr = False
+
         sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, self.unit_sqr, self.img)
         return sub_image
     
@@ -54,42 +60,92 @@ class rectangle:
         new_img = extract_rectangle(center_x, center_y, theta, self.width, self.height, self.unit_sqr, self.img)
         
         return new_img
-
-    def optomize_rectangle(self, model, param_dict):
-        method = param_dict['method']
-        
-        if method == 'PSO':
-            update_flag = self.optomize_rectangle_pso(model, param_dict)
-        elif method == 'GA':
-            update_flag = self.optomize_rectangle_ga(model, param_dict)
-        elif method == 'SA':
-            update_flag = self.optomize_rectangle_sa(model, param_dict)
-        elif method == 'quadratic':
-            update_flag = self.optomize_rectangle_quadratic(model, param_dict)
-        else:
-            print("Optimization method not recognized")
-
-        return update_flag
     
-    def optomize_rectangle_theta(self, model, param_dict):
-        # Pull the params
-        theta_radi = param_dict['theta_radi']
+    def shrink_rectangle(self, dwidth, dheight):
+        new_width = self.width + dwidth
+        new_height = self.height + dheight
+        new_unit_sqr = create_unit_square(new_width, new_height)
+        new_img = extract_rectangle(self.center_x, self.center_y, self.theta, new_width, new_height, new_unit_sqr, self.img)
+
+        return new_img
+    
+
+    def optimize_temp_match(self, model, param_dict):
+        half_width = self.width // 2
+        half_height = self.height // 2
+        search_img_x_bound = [self.min_center_x - half_width, self.max_center_x + half_width]
+        search_img_y_bound = [self.min_center_y - half_height, self.max_center_y + half_height]
+        search_img = self.img[search_img_y_bound[0]:search_img_y_bound[1], search_img_x_bound[0]:search_img_x_bound[1]]
+        
+        if search_img.size == 0:
+            return False
+
+        model_mean = np.mean(model)
+        model_std = np.std(model)
+        search_img_mean = np.mean(search_img)
+        search_img_std = np.std(search_img)
+        if search_img_std == 0:
+            return False
+        
+        search_img = (search_img - search_img_mean) / search_img_std
+        model = (model - model_mean) / model_std
+        search_img = search_img.astype(np.float32)
+        model = model.astype(np.float32)
+        results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
+        min_val, max_val, min_loc, max_loc = cv.minMaxLoc(results)
+
+        estimated_center_x = max_loc[0] + half_width
+        current_center_x = search_img.shape[1] // 2
+        estimated_center_y = max_loc[1] + half_height
+        current_center_y = search_img.shape[0] // 2
+        dx = estimated_center_x - current_center_x
+        dy = estimated_center_y - current_center_y
+        new_x = self.center_x + dx
+        new_y = self.center_y + dy
+
+        new_x = np.clip(new_x, self.min_center_x, self.max_center_x)
+        new_y = np.clip(new_y, self.min_center_y, self.max_center_y)
+
+        self.center_x = new_x
+        self.center_y = new_y
+
+
+    def disp_optimization(self, train_points, test_points, pred_model, model, loss):
+        # Shrink the test_points
+        indx = np.arange(0, test_points.shape[0], 5)
+        test_points = test_points[indx]
+        # Compute train obj_val
+        train_obj = self.test_points(model, "XY", train_points, loss)
+        # Compute all obj_val
+        all_obj_val = self.test_points(model, "XY", test_points, loss)
+        # Compute the predicted obj_val
+        pred_obj_val = pred_model.predict(test_points)
+
+        plt.close('all')
+        # Plot the results
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection = '3d')
+        ax.scatter(train_points[:,0], train_points[:,1], train_obj, c = 'b', marker = '.', label = 'Training Points')
+        ax.scatter(test_points[:,0], test_points[:,1], all_obj_val, c = 'r', marker = '.', label = 'True Values')
+        ax.scatter(test_points[:,0], test_points[:,1], pred_obj_val, c = 'g', marker = '.', label = 'Predicted Values')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Objective Function')
+        plt.legend()
+        plt.show()
+
+    def optimize_theta(self, model, param_dict):
         loss = param_dict['optimization_loss']
-
         current_img = self.create_sub_image()
-        current_img = bindvec(current_img)
         current_score = compute_score(current_img, model, method = loss)
-
-        test_points = np.arange(-theta_radi, theta_radi + 1, 1)
-        obj_val = []
-        for point in test_points:
-            new_img = self.move_rectangle(0, 0, point)
-            new_img = bindvec(new_img)
+        thetas = []
+        for theta in self.dtheta:
+            new_img = self.move_rectangle(0, 0, theta)
             tmp_score = compute_score(new_img, model, method = loss)
-            obj_val.append(tmp_score)
+            thetas.append(tmp_score)
 
-        fopt = np.min(obj_val)
-        xopt = test_points[np.argmin(obj_val)]
+        fopt = np.min(thetas)
+        xopt = self.dtheta[np.argmin(thetas)]
         if fopt < current_score:
             self.theta += xopt
             update_flag = True
@@ -97,243 +153,155 @@ class rectangle:
             update_flag = False
         
         return update_flag
-
-    def optomize_rectangle_quadratic(self, model, param_dict):
+    
+    def optimize_HW(self, model, param_dict):
         loss = param_dict['optimization_loss']
-        test_points = param_dict['test_points']
+        num_points = param_dict['ntest_HW']
 
-        # Coompute the current objective function
-        current_img = self.create_sub_image()
-        current_img = bindvec(current_img)
-        current_score = compute_score(current_img, model, method = loss)
-        
+        # Compute the current score
+        current_score = compute_score(self.create_sub_image(), model, method = loss)
+
+        # Create the meshgrid
+        H, W = np.meshgrid(self.dheight, self.dwidth)
+        all_points = np.column_stack((H.ravel(), W.ravel()))
+        train_indx = np.random.choice(all_points.shape[0], num_points, replace = False)
+        train_points = all_points[train_indx]
+        all_points = np.delete(all_points, train_indx, axis = 0)
+
+        # Fit the model
+        pred_model, x_train_opt, f_train_opt = self.fit_model(model, "HW", train_points, loss, method = "RF", degree = 1)
+
+        # Predict the objective function
+        all_obj = pred_model.predict(all_points)
+        # Sort the points
+        sorted_indx = np.argsort(all_obj)
+        sorted_indx = sorted_indx[:num_points]
+        best_points = all_points[sorted_indx]
+
+        # Test the best points
+        best_obj_val = self.test_points(model, "HW", best_points, loss)
+        best_x_opt = best_points[np.argmin(best_obj_val)]
+        best_f_opt = np.min(best_obj_val)
+
+        # Check if the optimization worked
+        if best_f_opt < f_train_opt:
+            fopt = best_f_opt
+            xopt = best_x_opt
+        else:
+            fopt = f_train_opt
+            xopt = x_train_opt
+
+        # Update the rectangle if needed
+        if fopt < current_score:
+            self.width += xopt[1]
+            self.height += xopt[0]
+            self.recompute_unit_sqr = True
+            update_flag = True
+        else:
+            update_flag = False
+
+
+        return update_flag
+
+
+    def optimize_XY(self, model, param_dict, display = False):
+        loss = param_dict['optimization_loss']
+        num_points = param_dict['ntest_XY']
+        optimization_flag = param_dict['preform_XY_optimization']
+
+        # Compute the current score
+        current_score = compute_score(self.create_sub_image(), model, method = loss)
+
         # Compute the objective function
-        obj_val = []
-        for point in test_points:
-            new_img = self.move_rectangle(point[0], point[1], 0)
-            new_img = bindvec(new_img)
-            tmp_score = compute_score(new_img, model, method = loss)
-            obj_val.append(tmp_score)
+        X, Y = np.meshgrid(self.dx, self.dy)
+        all_points = np.column_stack((X.ravel(), Y.ravel()))
+        train_indx = np.random.choice(all_points.shape[0], num_points, replace = False)
+        train_points = all_points[train_indx]
+        all_points = np.delete(all_points, train_indx, axis = 0)
 
-        if param_dict['preform_optimization']:
-            total_points = param_dict['total_points']
-            npoints_to_test = param_dict['num_points_to_test']
-
-            # Fit the training points
-            test_points = np.array(test_points)
-            # Create the model
-            pred_model = make_pipeline(PolynomialFeatures(degree = 2), RandomForestRegressor(n_estimators=100, n_jobs = 1))
-            pred_model.fit(test_points, obj_val)
-
-            total_obj = pred_model.predict(total_points)
+        if optimization_flag:
+            # Fit the model
+            pred_model, x_train_opt, f_train_opt = self.fit_model(model, "XY", train_points, loss, method = "RF", degree = 2)
+            # Predict the objective function
+            all_obj = pred_model.predict(all_points)
 
             # Find the best points
-            sorted_indx = np.argsort(total_obj)
-            sorted_indx = sorted_indx[:npoints_to_test]
-
+            sorted_indx = np.argsort(all_obj)
+            sorted_indx = sorted_indx[:num_points]
+            best_points = all_points[sorted_indx]
+            
             # Test the best points
-            fopt = np.inf
-            xopt = None
-            for indx in sorted_indx:
-                point = total_points[indx]
-                new_img = self.move_rectangle(point[0], point[1], 0)
-                new_img = bindvec(new_img)
-                tmp_score = compute_score(new_img, model, method = loss)
-                if tmp_score < fopt:
-                    fopt = tmp_score
-                    xopt = point
-
+            best_obj_val = self.test_points(model, "XY", best_points, loss)
+            best_x_opt = best_points[np.argmin(best_obj_val)]
+            best_f_opt = np.min(best_obj_val)
 
             # Check if the optimization worked
-            test_fopt = np.min(obj_val)
-            if test_fopt < fopt:
-                xopt = test_points[np.argmin(obj_val)]
-                fopt = np.min(obj_val)
+            if best_f_opt < f_train_opt:
+                fopt = best_f_opt
+                xopt = best_x_opt
             else:
-                print("Optimization Worked")
+                fopt = f_train_opt
+                xopt = x_train_opt
 
+            if display:
+                self.disp_optimization(train_points, all_points, pred_model, model, loss)
         else:
-            xopt = test_points[np.argmin(obj_val)]
+            obj_val = self.test_points(model, "XY", train_points, loss)
             fopt = np.min(obj_val)
+            xopt = train_points[np.argmin(obj_val)]
 
+        # Update the rectangle if needed
         if fopt < current_score:
             self.center_x += xopt[0]
             self.center_y += xopt[1]
             update_flag = True
         else:
             update_flag = False
+
         
+
         return update_flag
 
-    def optomize_rectangle_pso(self, model, param_dict):
-        # Pull the params
-        x_radi = param_dict['x_radi']
-        y_radi = param_dict['y_radi']
-        theta_radi = param_dict['theta_radi']
-        loss = param_dict['optimization_loss']
-        swarm_size = param_dict['swarm_size']
-        mxiter = param_dict['maxiter']
-
-        # Define the objective function
-        def objective_function(x):
-            dX, dY, dTheta = x
-        
-            test_img = self.move_rectangle(dX, dY, dTheta)
-            test_img = bindvec(test_img)
-            dist = compute_score(test_img, model, method = loss)
-
-            return dist
-        
-        # Define the bounds
-        lb = [-x_radi, -y_radi, -theta_radi]
-        ub = [x_radi, y_radi, theta_radi]
-
-        # Optomize the rectangle using PSO
-        xopt, fopt = pso(objective_function, lb, ub, swarmsize=swarm_size, maxiter=mxiter)
-
-        # Check to make sure we are improving the model
-        initial_fitness = objective_function([0,0,0])
-        if initial_fitness < fopt:
-            update_flag = False
-            return update_flag
+    def test_points(self, model, phase, points, loss):
+        obj_val = []
+        if phase == "XY":
+            for point in points:
+                new_img = self.move_rectangle(point[0], point[1], 0)
+                tmp_score = compute_score(new_img, model, method = loss)
+                obj_val.append(tmp_score)
+        elif phase == "HW":
+            for point in points:
+                new_img = self.shrink_rectangle(point[1], point[0])
+                tmp_score = compute_score(new_img, model, method = loss)
+                obj_val.append(tmp_score)
+        elif phase == "Theta":
+            for point in points:
+                new_img = self.move_rectangle(0, 0, point)
+                tmp_score = compute_score(new_img, model, method = loss)
+                obj_val.append(tmp_score)
         else:
-            delta_x = np.round(xopt[0]).astype(int)
-            delta_y = np.round(xopt[1]).astype(int)
-            delta_theta = np.round(xopt[2]).astype(int)
+            print("Invalid phase for fitting model")
+            return
+        
+        return obj_val
 
-            self.center_x = self.center_x + delta_x
-            self.center_y = self.center_y + delta_y
-            self.theta = self.theta + delta_theta
+    def fit_model(self, model, phase, train_points, loss, method = "RF", degree = 2):
+        obj_val = self.test_points(model, phase, train_points, loss)
 
-            update_flag = True
-            return update_flag
+        train_points = np.array(train_points)
+        if method == "RF":
+            pred_model = make_pipeline(PolynomialFeatures(degree = degree), RandomForestRegressor())
+        elif method == "LR":
+            pred_model = make_pipeline(PolynomialFeatures(degree = degree), LinearRegression())
+        else:
+            print("Invalid method for fitting model")
+            return
+        
+        pred_model.fit(train_points, obj_val)
+        f_train_opt = np.min(obj_val)
+        x_train_opt = train_points[np.argmin(obj_val)]
+
+        return pred_model, x_train_opt, f_train_opt
+
+
     
-    def optomize_rectangle_ga(self, model, param_dict):
-        x_radi = param_dict['x_radi']
-        y_radi = param_dict['y_radi']
-        theta_radi = param_dict['theta_radi']
-        loss = param_dict['optimization_loss']
-        num_pops = param_dict['num_pops']
-        num_gens = param_dict['num_gens']
-        mutation_prob = param_dict['mutation_prob']
-        crossover_prob = param_dict['crossover_prob']
-
-        def custom_mutate(individual):
-            bounds = [(-x_radi, x_radi), (-y_radi, y_radi), (-theta_radi, theta_radi)]
-
-            for i in range(len(individual)):
-                if random.random() < 0.1:
-                    individual[i] = random.randint(*bounds[i])
-            return individual,
-        
-        def objective_function(x):
-            dX, dY, dTheta = x
-        
-            test_img = self.move_rectangle(dX, dY, dTheta)
-            test_img = bindvec(test_img)
-            dist = compute_score(test_img, model, method = loss)
-            return dist,
-        
-        # Define the individual and population functions
-        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-        creator.create("Individual", list, fitness=creator.FitnessMin)
-
-        # Define the individual and population functions
-        toolbox = base.Toolbox()
-        toolbox.register("attr_dx", random.randint, -x_radi, x_radi)  # bounds for dx
-        toolbox.register("attr_dy", random.randint, -y_radi, y_radi)  # bounds for dy
-        toolbox.register("attr_dtheta", random.randint, -theta_radi, theta_radi)  # bounds for dtheta
-
-        toolbox.register("individual", tools.initCycle, creator.Individual, (toolbox.attr_dx, toolbox.attr_dy, toolbox.attr_dtheta), n=1)
-        toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-        
-        # Define the objective function
-        toolbox.register("evaluate", objective_function)
-
-        # Define the genetic operators
-        toolbox.register("mate", tools.cxTwoPoint)
-        toolbox.register("mutate", custom_mutate)
-        toolbox.register("select", tools.selTournament, tournsize=3)
-
-        # Preform the genetic algorithm
-        pop = toolbox.population(n=num_pops)
-        hof = tools.HallOfFame(1)
-        algorithms.eaSimple(pop, toolbox, cxpb=crossover_prob, mutpb=mutation_prob, ngen=num_gens, stats=None, halloffame=hof, verbose=False)
-        xopt = hof[0]
-
-        # Check to make sure we are improving the model
-        initial_fitness = objective_function([0,0,0])
-        fopt = objective_function(xopt)
-
-        if initial_fitness < fopt:
-            update_flag = False
-            return update_flag
-        else:
-            delta_x = np.round(xopt[0]).astype(int)
-            delta_y = np.round(xopt[1]).astype(int)
-            delta_theta = np.round(xopt[2]).astype(int)
-
-            self.center_x = self.center_x + delta_x
-            self.center_y = self.center_y + delta_y
-            self.theta = self.theta + delta_theta
-
-            update_flag = True
-            return update_flag
-    
-    def optomize_rectangle_sa(self, model, param_dict):
-        # Pull the params
-        x_radi = param_dict['x_radi']
-        y_radi = param_dict['y_radi']
-        theta_radi = param_dict['theta_radi']
-        loss = param_dict['optimization_loss']
-        mxiter = param_dict['maxiter']
-
-        # Define the objective function
-        def objective_function(x):
-            dX, dY, dTheta = x
-        
-            test_img = self.move_rectangle(dX, dY, dTheta)
-            test_img = bindvec(test_img)
-            dist = compute_score(test_img, model, method = loss)
-
-            return dist
-        
-        # Define the bounds
-        bounds = Bounds([-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi])
-        #bounds = [[-x_radi, -y_radi, -theta_radi], [x_radi, y_radi, theta_radi]]
-
-        initial_temp = 5000
-        min_temp = 1
-        cooling_rate = 0.99
-        step_size = 3
-        max_iterations = 300
-
-        #xopt, fopt = simulated_annealing(objective_function, bounds, initial_temperature = initial_temp, cooling_rate = cooling_rate, min_temperature = min_temp, max_iterations = max_iterations, step_size = step_size)
-
-
-        mxiter = 1000
-        # Optomize the rectangle using simulated annealing
-        opt_solution = dual_annealing(objective_function, bounds, maxiter = mxiter)
-        xopt = opt_solution.x
-
-        # Check to make sure we are improving the model
-        initial_fitness = objective_function([0,0,0])
-        fopt = opt_solution.fun
-
-        if initial_fitness < fopt:
-            update_flag = False
-            return update_flag
-        else:
-            delta_x = np.round(xopt[0]).astype(int)
-            delta_y = np.round(xopt[1]).astype(int)
-            delta_theta = np.round(xopt[2]).astype(int)
-
-            self.center_x = self.center_x + delta_x
-            self.center_y = self.center_y + delta_y
-            self.theta = self.theta + delta_theta
-
-            update_flag = True
-            return update_flag
-        
-
-

@@ -46,14 +46,15 @@ class wavepad:
         row_cnt = self.params["nrows"]
 
         # Finding the initial rectangles, range and row count
-        initial_rect_list, initial_range_cnt, initial_row_cnt = build_rect_list(self.range_skel, self.row_skel, self.img)
+        initial_rect_list, initial_range_cnt, initial_row_cnt, initial_width, initial_height = build_rect_list(self.range_skel, self.row_skel, self.img)
 
         # Computing the number of ranges and rows to find
         self.ranges_2_find = range_cnt - initial_range_cnt
         self.rows_2_find = row_cnt - initial_row_cnt
+        self.model_shape = (initial_height, initial_width)
 
         # Computing the initial model
-        initial_model = compute_model(initial_rect_list)
+        initial_model = compute_model(initial_rect_list, self.model_shape)
         # Creating the optimization param dict
         self.create_opt_param_dict("sparse")
 
@@ -72,7 +73,7 @@ class wavepad:
             self.rows_2_find = 0
 
         # Recompute the model
-        self.initial_model = compute_model(initial_rect_list)
+        self.initial_model = compute_model(initial_rect_list, self.model_shape)
         self.initial_rect_list = initial_rect_list
         
         print("Finished Building Initial Rectangles")
@@ -90,11 +91,11 @@ class wavepad:
 
         # Double check rows 
         print("Double Checking Rows")
-        self.initial_rect_list = double_check(self.initial_rect_list, "row", self.initial_model, self.opt_param_dict)
+        #self.initial_rect_list = double_check(self.initial_rect_list, "row", self.initial_model, self.opt_param_dict)
 
         # Double check ranges
         print("Double Checking Ranges")
-        self.initial_rect_list = double_check(self.initial_rect_list, "range", self.initial_model, self.opt_param_dict)
+        #self.initial_rect_list = double_check(self.initial_rect_list, "range", self.initial_model, self.opt_param_dict)
 
         print("Finished Finding All Rectangles")
         self.final_rect_list = self.initial_rect_list
@@ -112,12 +113,11 @@ class wavepad:
 
         # Final Optimization
         self.create_opt_param_dict("fine")
-        final_optimize(self.final_rect_list, self.opt_param_dict)
+        final_optimize(self.final_rect_list, self.opt_param_dict, self.initial_model)
 
 
     def create_opt_param_dict(self, phase):
         opt_param_dict = {}
-        opt_param_dict['method'] = 'quadratic'
         opt_param_dict['optimization_loss'] = "L1"
         opt_param_dict['kernel_radi'] = [2, 2]
 
@@ -125,19 +125,25 @@ class wavepad:
             opt_param_dict['x_radi'] = 20
             opt_param_dict['y_radi'] = 50
             opt_param_dict['theta_radi'] = 0
-            opt_param_dict['quadratic_num_points'] = 100
-            opt_param_dict['max_epoch'] = 1
-            opt_param_dict['preform_optimization'] = False
+            opt_param_dict['width_shrink'] = 20
+            opt_param_dict['height_shrink'] = 80
+            opt_param_dict['ntest_XY'] = 100
+            opt_param_dict['ntest_HW'] = 100
+            opt_param_dict['model_shape'] = self.model_shape
+            opt_param_dict['preform_XY_optimization'] = False
+
         elif phase == "fine":
+            opt_param_dict['optimization_loss'] = "NCC"
+            opt_param_dict['max_epoch'] = 10
             opt_param_dict['x_radi'] = 30
-            opt_param_dict['y_radi'] = 120
+            opt_param_dict['y_radi'] = 100
             opt_param_dict['theta_radi'] = 5
-            opt_param_dict['max_epoch'] = 1
-            opt_param_dict['width_shrink'] = 10
-            opt_param_dict['height_shrink'] = 40
-            opt_param_dict['quadratic_num_points'] = 300
-            opt_param_dict['preform_optimization'] = True
-            opt_param_dict['num_points_to_test'] = 100
+            opt_param_dict['width_shrink'] = 20
+            opt_param_dict['height_shrink'] = 80
+            opt_param_dict['ntest_XY'] = 300
+            opt_param_dict['ntest_HW'] = 100
+            opt_param_dict['model_shape'] = self.model_shape
+            opt_param_dict['preform_XY_optimization'] = True
 
         self.opt_param_dict = opt_param_dict
 

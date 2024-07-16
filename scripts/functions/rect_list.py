@@ -34,7 +34,7 @@ def build_rect_list(range_skel, row_skel, img):
             rect.unit_sqr = unit_sqr
             output_list.append(rect)
 
-        return output_list, num_ranges, num_rows
+        return output_list, num_ranges, num_rows, mean_width, mean_height
 
 def build_rectangles(range_skel, col_skel):
     num_ranges, ld_range, _, _ = cv.connectedComponentsWithStats(dialate_skel(range_skel))
@@ -68,104 +68,134 @@ def build_rectangles(range_skel, col_skel):
     return rect, num_ranges, num_rows
 
 def sparse_optimize(rect_list, model, opt_param_dict):
-    # Pull the parameters
-    x_radi = opt_param_dict['x_radi']
-    y_radi = opt_param_dict['y_radi']
-    num_points = opt_param_dict['quadratic_num_points']
+    # Pre Process the rectangles
+    preprocess_rect_list(rect_list, opt_param_dict)
+    compute_prospective_changes(rect_list)
 
-    # Compute the test points
-    test_points, total_points = compute_points(x_radi, y_radi, num_points)
-
-    # Push to the dictionary
-    opt_param_dict['test_points'] = test_points
-
-    # Pull the number of epochs and kernel radii
-    max_epoch = opt_param_dict['max_epoch']
+    # Define the parameters
     kernel_radi = opt_param_dict['kernel_radi']
 
     print("Starting Sparse Optimization")
-    results = []
+    xy_flag = []
     for rect in rect_list:
-        tmp_flag = rect.optomize_rectangle(model, opt_param_dict)
-        results.append(tmp_flag)
+        rect.optimize_temp_match(model, opt_param_dict)
+        #tmp_flag = rect.optimize_XY(model, opt_param_dict)
+        #xy_flag.append(tmp_flag)
 
-    num_updated = np.sum(results)
+    num_updated = np.sum(xy_flag)
     print(f"Updated {num_updated} rectangles")
 
     distance_optimize(rect_list, kernel_radi, weight = .8, update = True)
-
     
     return
 
-def final_optimize(rect_list, opt_param_dict):
-    # Pull the parameters
-    x_radi = opt_param_dict['x_radi']
-    y_radi = opt_param_dict['y_radi']
-    t_radi = opt_param_dict['theta_radi']
-    num_points = opt_param_dict['quadratic_num_points']
-
-    # Compute the test points
-    test_points, total_points = compute_points(x_radi, y_radi, num_points)
-
-    print(f"Using {test_points.shape[0]} test points")
-    print(f"Using {total_points.shape[0]} total points")
-    # Push to the dictionary
-    opt_param_dict['test_points'] = test_points
-    opt_param_dict['total_points'] = total_points
-    kernel_radi = opt_param_dict['kernel_radi']
+def final_optimize(rect_list, opt_param_dict, initial_model):
+    # Pre Process the rectangles
+    preprocess_rect_list(rect_list, opt_param_dict)
     
-    print(f"Starting Final Optimization")
-    model = compute_model(rect_list)
-    total = len(rect_list)
-    position_update = []
-    theta_update = []
+    # Define the parameters
+    kernel_radi = opt_param_dict['kernel_radi']
+    model = initial_model
+    
+    print(f"Starting Final Position Optimization")
+    epoch = 1
+    while epoch <= opt_param_dict['max_epoch']:
+        print(f"Epoch {epoch}")
+        xy_update = []
+        hw_update = []
+        theta_update = []
+        
+        # Compute the prospective changes
+        compute_prospective_changes(rect_list)
+        # Compute the model
+        #model = compute_model(rect_list, opt_param_dict['model_shape'])
 
-    for rect in tqdm(rect_list, total = total, desc = "Final Optimization"):
-        pos_flag = rect.optomize_rectangle(model, opt_param_dict)
-        theta_flag = rect.optomize_rectangle_theta(model, opt_param_dict)
-        shrink_rect(rect, model, opt_param_dict)
-        position_update.append(pos_flag)
-        theta_update.append(theta_flag)
+        # Optimize the rectangles
+        for rect in tqdm(rect_list, desc = "Final Optimization"):
+            test = rect.optimize_temp_match(model, opt_param_dict)
+            #xy_update.append(rect.optimize_XY(model, opt_param_dict, display = True))
+            #hw_update.append(rect.optimize_HW(model, opt_param_dict))
+            #theta_update.append(rect.optimize_theta(model, opt_param_dict))
 
-    print(f"Updated position of {np.sum(position_update)} rectangles")
-    print(f"Updated theta of {np.sum(theta_update)} rectangles")
-    #Recompute the model
-    distance_optimize(rect_list, kernel_radi, weight = .5, update = True)
+
+        print(f"Update Stats: \n"
+            f"  Position: {np.sum(xy_update)} / {len(rect_list)}\n"
+            f"  Height / Width: {np.sum(hw_update)} / {len(rect_list)}\n"
+            f"  Theta: {np.sum(theta_update)} / {len(rect_list)}\n")
+       
+        # Distance Optimization
+        distance_optimize(rect_list, kernel_radi, weight = .5, update = True)
+        epoch += 1
+        
+
 
     print("Finished Final Optimization")
         
     return
 
+def preprocess_rect_list(rect_list, param_dict):
+    x_radi = param_dict['x_radi']
+    y_radi = param_dict['y_radi']
+    theta_radi = param_dict['theta_radi']
+    width_shrink = param_dict['width_shrink']
+    height_shrink = param_dict['height_shrink']
 
+    for rect in rect_list:
+        # Center X
+        rect.max_center_x = rect.center_x + x_radi
+        rect.min_center_x = rect.center_x - x_radi
 
-def compute_points(x_radi, y_radi, num_points):
-    y_ratio = y_radi / x_radi
+        # Center Y
+        rect.max_center_y = rect.center_y + y_radi
+        rect.min_center_y = rect.center_y - y_radi
 
-    x_num_sample = np.power(num_points / y_ratio, 1/2)
-    y_num_sample = (x_num_sample * y_ratio).astype(int)
-    x_num_sample = x_num_sample.astype(int)
+        # Theta
+        rect.max_theta = rect.theta + theta_radi
+        rect.min_theta = rect.theta - theta_radi
 
-    # Create the test points
-    x = np.round(np.linspace(-x_radi, x_radi, x_num_sample)).astype(int)
-    y = np.round(np.linspace(-y_radi, y_radi, y_num_sample)).astype(int)
+        # Width
+        rect.max_width = rect.width
+        rect.min_width = rect.width - width_shrink
 
-    # Create the meshgrid
-    X, Y = np.meshgrid(x, y)
-    test_points = np.column_stack((X.ravel(), Y.ravel()))
+        # Height
+        rect.max_height = rect.height
+        rect.min_height = rect.height - height_shrink
+        
+    return
 
-    # Remove the origin if it exists
-    test_points = test_points[np.where((test_points[:,0] != 0) | (test_points[:,1] != 0))]
+def compute_prospective_changes(rect_list):
+    for rect in rect_list:
+        # X
+        max_dx = rect.max_center_x - rect.center_x
+        min_dx = rect.min_center_x - rect.center_x
+        dx = np.arange(min_dx, max_dx + 1, 1)
+        rect.dx = dx
 
-    # Only keep unique values
-    test_points = np.unique(test_points, axis = 0)
+        # Y
+        max_dy = rect.max_center_y - rect.center_y
+        min_dy = rect.min_center_y - rect.center_y
+        dy = np.arange(min_dy, max_dy + 1, 1)
+        rect.dy = dy
 
-    # Create the total points
-    x_total = np.arange(-x_radi, x_radi, 2)
-    y_total = np.arange(-y_radi, y_radi, 2)
-    X, Y, = np.meshgrid(x_total, y_total)
-    total_points = np.column_stack((X.ravel(), Y.ravel()))
-    
-    return test_points , total_points
+        # Theta
+        max_dtheta = rect.max_theta - rect.theta
+        min_dtheta = rect.min_theta - rect.theta
+        dtheta = np.arange(min_dtheta, max_dtheta + 1, 1)
+        rect.dtheta = dtheta
+
+        # Width
+        max_dwidth = rect.max_width - rect.width
+        min_dwidth = rect.min_width - rect.width
+        dwidth = np.arange(min_dwidth, max_dwidth + 1, 1)
+        rect.dwidth = dwidth
+
+        # Height
+        max_dheight = rect.max_height - rect.height
+        min_dheight = rect.min_height - rect.height
+        dheight = np.arange(min_dheight, max_dheight + 1, 1)
+        rect.dheight = dheight
+
+    return
 
 def set_range_row(rect_list):
     range_list = np.array([rect.range for rect in rect_list])
