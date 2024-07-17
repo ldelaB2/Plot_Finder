@@ -100,19 +100,11 @@ def disp_spiral_path(path):
     ax.set_xlim(0, max_row + 1)
     ax.set_ylim(0, max_range + 1)
 
-    all_points = []
-    def init():
-        scat.set_offsets(np.empty((0,2)))
-        return scat,
+    for point in path:
+        ax.scatter(point[1], point[0], c = 'b')
+        plt.pause(.1)
 
-    def update(frame):
-        current_point = path[frame][::-1]
-        all_points.append(current_point)
-        scat.set_offsets(all_points)
-        return scat,
-
-    ani = FuncAnimation(fig, update, frames = len(path), init_func = init, interval = 20, blit = True)
-    plt.show()
+    plt.close('all')
 
     return
 

@@ -60,18 +60,6 @@ class wavepad:
 
         # Preform the first optimization
         sparse_optimize(initial_rect_list, initial_model, self.opt_param_dict)
-
-        # Remove the extra ranges if needed
-        if self.ranges_2_find < 0:
-            print(f"Removing {abs(self.ranges_2_find)} extra range(s) from FFT")
-            initial_rect_list = remove_rectangles(initial_rect_list, "range", abs(self.ranges_2_find), initial_model)
-            self.ranges_2_find = 0
-
-        if self.rows_2_find < 0:
-            print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
-            initial_rect_list = remove_rectangles(initial_rect_list, "row", abs(self.rows_2_find), initial_model)
-            self.rows_2_find = 0
-
         # Recompute the model
         self.initial_model = compute_model(initial_rect_list, self.model_shape)
         self.initial_rect_list = initial_rect_list
@@ -89,13 +77,25 @@ class wavepad:
             print(f"Finding {self.rows_2_find} missing row(s)")
             self.initial_rect_list = add_rectangles(self.initial_rect_list, "row", self.rows_2_find, self.initial_model, self.opt_param_dict)
 
+         # Remove the extra ranges if needed
+        if self.ranges_2_find < 0:
+            print(f"Removing {abs(self.ranges_2_find)} extra range(s) from FFT")
+            self.initial_rect_list = remove_rectangles(self.initial_rect_list, "range", abs(self.ranges_2_find), self.initial_model)
+            self.ranges_2_find = 0
+
+        # Remove the extra rows if needed
+        if self.rows_2_find < 0:
+            print(f"Removing {abs(self.rows_2_find)} extra row(s) from FFT")
+            self.initial_rect_list = remove_rectangles(self.initial_rect_list, "row", abs(self.rows_2_find), self.initial_model)
+            self.rows_2_find = 0
+
         # Double check rows 
         print("Double Checking Rows")
-        #self.initial_rect_list = double_check(self.initial_rect_list, "row", self.initial_model, self.opt_param_dict)
+        self.initial_rect_list = double_check(self.initial_rect_list, "row", self.initial_model, self.opt_param_dict)
 
         # Double check ranges
         print("Double Checking Ranges")
-        #self.initial_rect_list = double_check(self.initial_rect_list, "range", self.initial_model, self.opt_param_dict)
+        self.initial_rect_list = double_check(self.initial_rect_list, "range", self.initial_model, self.opt_param_dict)
 
         print("Finished Finding All Rectangles")
         self.final_rect_list = self.initial_rect_list
@@ -119,21 +119,16 @@ class wavepad:
     def create_opt_param_dict(self, phase):
         opt_param_dict = {}
         opt_param_dict['optimization_loss'] = "L1"
-        opt_param_dict['kernel_radi'] = [2, 2]
+        opt_param_dict['neighbor_radi'] = 2
+        opt_param_dict['ncore'] = self.params["num_cores"]
 
         if phase == "sparse":
             opt_param_dict['x_radi'] = 20
             opt_param_dict['y_radi'] = 50
-            opt_param_dict['theta_radi'] = 0
-            opt_param_dict['width_shrink'] = 20
-            opt_param_dict['height_shrink'] = 80
-            opt_param_dict['ntest_XY'] = 100
-            opt_param_dict['ntest_HW'] = 100
-            opt_param_dict['model_shape'] = self.model_shape
-            opt_param_dict['preform_XY_optimization'] = False
+            opt_param_dict['valid_radi'] = 30
+            opt_param_dict['nstart'] = 10
 
         elif phase == "fine":
-            opt_param_dict['optimization_loss'] = "NCC"
             opt_param_dict['max_epoch'] = 10
             opt_param_dict['x_radi'] = 30
             opt_param_dict['y_radi'] = 100

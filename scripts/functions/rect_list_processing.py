@@ -3,6 +3,7 @@ import copy
 
 from functions.optimization import compute_score_list
 from functions.rect_list import sparse_optimize
+from functions.distance_optimize import distance_optimize
 
 
 def find_next_rect(rect_list, direction, edge = False):
@@ -31,6 +32,8 @@ def find_next_rect(rect_list, direction, edge = False):
         # Reset the flags
         tmp1_rect.added = True
         tmp2_rect.added = True
+        tmp1_rect.flagged = False
+        tmp2_rect.flagged = False
 
 
         if direction == 'range':
@@ -144,6 +147,8 @@ def remove_rectangles(rect_list, direction, num_2_remove, model):
 
 def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
     score_method = "L1"
+    kernel_radi = opt_param_dict['kernel_radi']
+
     for cnt in range(num_2_add):
         # Find the next rectangles
         min_list, max_list = find_next_rect(rect_list, direction, edge = False)
@@ -153,7 +158,12 @@ def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
 
         if min_flag:
             # Optimize the rectangles
-            sparse_optimize(min_list, model, opt_param_dict)
+            for rect in min_list:
+                rect.optimize_xy(model, opt_param_dict)
+
+            # Distance Optimization
+            distance_optimize(min_list, kernel_radi, existing_list = rect_list, weight = .5, update = True)
+            
             # Compute the score
             min_score = compute_score_list(min_list, model, method = score_method)
         else:
@@ -162,7 +172,10 @@ def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
 
         if max_flag:
             # Optimize the rectangles
-            sparse_optimize(max_list, model, opt_param_dict)
+            for rect in max_list:
+                rect.optimize_xy(model, opt_param_dict)
+            # Distance Optimization
+            distance_optimize(max_list, kernel_radi, existing_list = rect_list, weight = .5, update = True)
             # Compute the score
             max_score = compute_score_list(max_list, model, method = score_method)
         else:

@@ -38,6 +38,10 @@ class rectangle:
         self.unit_sqr = None
         self.neighbors = None
         self.recompute_unit_sqr = True
+        self.nbr_dxy = None
+        self.nbr_position = None
+        self.valid_points = None
+        self.score = None
 
     def create_sub_image(self):
         if self.recompute_unit_sqr:
@@ -69,8 +73,7 @@ class rectangle:
 
         return new_img
     
-
-    def optimize_temp_match(self, model, param_dict):
+    def create_search_img(self):
         half_width = self.width // 2
         half_height = self.height // 2
         search_img_x_bound = [self.min_center_x - half_width, self.max_center_x + half_width]
@@ -78,19 +81,127 @@ class rectangle:
         search_img = self.img[search_img_y_bound[0]:search_img_y_bound[1], search_img_x_bound[0]:search_img_x_bound[1]]
         
         if search_img.size == 0:
-            return False
-
-        model_mean = np.mean(model)
-        model_std = np.std(model)
+            return None
+        
         search_img_mean = np.mean(search_img)
         search_img_std = np.std(search_img)
+
         if search_img_std == 0:
-            return False
+            return None
         
         search_img = (search_img - search_img_mean) / search_img_std
-        model = (model - model_mean) / model_std
         search_img = search_img.astype(np.float32)
-        model = model.astype(np.float32)
+        
+        return search_img
+    
+    def optimize_hw(self, model, param_dict):
+        print("T")
+
+    def predict_neighbor_position(self):
+        if self.neighbors is None:
+            print("No neighbors")
+            return
+        
+        if self.nbr_dxy is None:
+            self.nbr_dxy = {}
+            self.nbr_position = {}
+
+            for nbr in self.neighbors:
+                rng_away = abs(self.range - nbr[0])
+                row_away = abs(self.row - nbr[1])
+
+                if nbr[0] < self.range:
+                    rng_away = -rng_away
+                if nbr[1] < self.row:
+                    row_away = -row_away
+
+                dx = row_away * self.width
+                dy = rng_away * self.height
+
+                theta = np.radians(self.theta)
+                dx_rot = dx * np.cos(theta) - dy * np.sin(theta)
+                dy_rot = dx * np.sin(theta) + dy * np.cos(theta)
+
+                dx_rot = int(np.round(dx_rot))
+                dy_rot = int(np.round(dy_rot))
+
+                self.nbr_dxy[nbr] = (dx_rot, dy_rot)
+
+        for nbr in self.neighbors:
+            dx, dy = self.nbr_dxy[nbr]
+            expected_center = (self.center_x + dx, self.center_y + dy)
+            self.nbr_position[nbr] = expected_center
+
+
+
+    def compute_template_score(self, model, x_radi, y_radi):
+        half_width = model.shape[1] // 2
+        half_height = model.shape[0] // 2
+        search_img_x_bound = [self.center_x - half_width - x_radi, self.center_x + half_width + x_radi]
+        search_img_y_bound = [self.center_y - half_height -y_radi, self.center_y + half_height + y_radi]
+        search_img = self.img[search_img_y_bound[0]:search_img_y_bound[1], search_img_x_bound[0]:search_img_x_bound[1]]
+        search_img_mean = np.mean(search_img)
+        search_img_std = np.std(search_img)
+
+        if search_img_std == 0:
+            return np.inf
+        
+        search_img = (search_img - search_img_mean) / search_img_std
+        search_img = search_img.astype(np.float32)
+
+        results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
+
+        x_val = np.arange(self.center_x - x_radi, self.center_x + x_radi , 1)
+        y_val = np.arange(self.center_y - y_radi, self.center_y + y_radi + 1, 1)
+        X, Y = np.meshgrid(x_val, y_val)
+        points = np.column_stack((X.ravel(), Y.ravel(), results.ravel()))
+        
+        self.template_points = set()
+        self.template_points_values = {}
+        for point in points:
+            self.template_points.add((point[0], point[1]))
+            self.template_points_values[(point[0], point[1])] = point[2]
+
+    def find_center(self):
+        scores = []
+        for point in list(self.valid_points):
+            score = self.template_points_values[point]
+            scores.append((point[0], point[1], score))
+
+        self.center_scores = np.array(scores)
+        self.center_scores = self.center_scores[self.center_scores[:,2].argsort()[::-1]]
+        self.center_indx = -1
+        self.move_center()
+
+    def move_center(self):
+        self.center_indx += 1
+
+        if self.center_indx > self.center_scores.shape[0] - 1:
+            updated = False
+        else:
+            updated = True
+        
+            self.center_x = self.center_scores[self.center_indx, 0].astype(int)
+            self.center_y = self.center_scores[self.center_indx, 1].astype(int)
+            self.score = self.center_scores[self.center_indx, 2]
+            self.predict_neighbor_position()
+
+        return updated
+
+
+    def optimize_xy(self, model, param_dict):
+        # Check if flagged
+        if self.flagged:
+            return False
+        
+        # Create the search image
+        search_img = self.create_search_img()
+        if search_img is None:
+            return False
+        
+        half_width = self.width // 2
+        half_height = self.height // 2
+
         results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
         min_val, max_val, min_loc, max_loc = cv.minMaxLoc(results)
 
@@ -100,14 +211,12 @@ class rectangle:
         current_center_y = search_img.shape[0] // 2
         dx = estimated_center_x - current_center_x
         dy = estimated_center_y - current_center_y
-        new_x = self.center_x + dx
-        new_y = self.center_y + dy
+        
+        self.center_x += dx
+        self.center_y += dy
 
-        new_x = np.clip(new_x, self.min_center_x, self.max_center_x)
-        new_y = np.clip(new_y, self.min_center_y, self.max_center_y)
-
-        self.center_x = new_x
-        self.center_y = new_y
+        return True
+            
 
 
     def disp_optimization(self, train_points, test_points, pred_model, model, loss):
@@ -154,54 +263,7 @@ class rectangle:
         
         return update_flag
     
-    def optimize_HW(self, model, param_dict):
-        loss = param_dict['optimization_loss']
-        num_points = param_dict['ntest_HW']
-
-        # Compute the current score
-        current_score = compute_score(self.create_sub_image(), model, method = loss)
-
-        # Create the meshgrid
-        H, W = np.meshgrid(self.dheight, self.dwidth)
-        all_points = np.column_stack((H.ravel(), W.ravel()))
-        train_indx = np.random.choice(all_points.shape[0], num_points, replace = False)
-        train_points = all_points[train_indx]
-        all_points = np.delete(all_points, train_indx, axis = 0)
-
-        # Fit the model
-        pred_model, x_train_opt, f_train_opt = self.fit_model(model, "HW", train_points, loss, method = "RF", degree = 1)
-
-        # Predict the objective function
-        all_obj = pred_model.predict(all_points)
-        # Sort the points
-        sorted_indx = np.argsort(all_obj)
-        sorted_indx = sorted_indx[:num_points]
-        best_points = all_points[sorted_indx]
-
-        # Test the best points
-        best_obj_val = self.test_points(model, "HW", best_points, loss)
-        best_x_opt = best_points[np.argmin(best_obj_val)]
-        best_f_opt = np.min(best_obj_val)
-
-        # Check if the optimization worked
-        if best_f_opt < f_train_opt:
-            fopt = best_f_opt
-            xopt = best_x_opt
-        else:
-            fopt = f_train_opt
-            xopt = x_train_opt
-
-        # Update the rectangle if needed
-        if fopt < current_score:
-            self.width += xopt[1]
-            self.height += xopt[0]
-            self.recompute_unit_sqr = True
-            update_flag = True
-        else:
-            update_flag = False
-
-
-        return update_flag
+  
 
 
     def optimize_XY(self, model, param_dict, display = False):
