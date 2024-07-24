@@ -3,6 +3,7 @@ matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 import multiprocessing as mp
 import numpy as np
+from classes.model import model
 
 from functions.display import disp_rectangles
 from functions.optimization import compute_model
@@ -53,15 +54,19 @@ class wavepad:
         self.rows_2_find = row_cnt - initial_row_cnt
         self.model_shape = (initial_height, initial_width)
 
-        # Computing the initial model
-        initial_model = compute_model(initial_rect_list, self.model_shape)
         # Creating the optimization param dict
         self.create_opt_param_dict("sparse")
 
+        # Initial model build by optimizing initial rect_list
+        self.model = model(initial_rect_list, self.opt_param_dict)
+        # Computing the initial model
+        initial_model = compute_model(initial_rect_list, self.model_shape, shift = True)
+        
+
         # Preform the first optimization
-        sparse_optimize(initial_rect_list, initial_model, self.opt_param_dict)
+        self.initial_rect_list = sparse_optimize(initial_rect_list, initial_model, self.opt_param_dict)
         # Recompute the model
-        self.initial_model = compute_model(initial_rect_list, self.model_shape)
+        self.initial_model = compute_model(initial_rect_list, self.model_shape, shift = True)
         self.initial_rect_list = initial_rect_list
         
         print("Finished Building Initial Rectangles")
@@ -125,20 +130,17 @@ class wavepad:
         if phase == "sparse":
             opt_param_dict['x_radi'] = 20
             opt_param_dict['y_radi'] = 50
-            opt_param_dict['valid_radi'] = 30
-            opt_param_dict['nstart'] = 10
+            opt_param_dict['epoch'] = 3
 
         elif phase == "fine":
-            opt_param_dict['max_epoch'] = 10
+            opt_param_dict['max_epoch'] = 5
+            opt_param_dict['valid_radi'] = 60
             opt_param_dict['x_radi'] = 30
             opt_param_dict['y_radi'] = 100
             opt_param_dict['theta_radi'] = 5
             opt_param_dict['width_shrink'] = 20
             opt_param_dict['height_shrink'] = 80
-            opt_param_dict['ntest_XY'] = 300
-            opt_param_dict['ntest_HW'] = 100
             opt_param_dict['model_shape'] = self.model_shape
-            opt_param_dict['preform_XY_optimization'] = True
 
         self.opt_param_dict = opt_param_dict
 

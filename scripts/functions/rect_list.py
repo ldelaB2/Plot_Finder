@@ -3,14 +3,13 @@ import cv2 as cv
 from tqdm import tqdm
 
 from classes.rectangles import rectangle
+from classes.model import model
 from functions.image_processing import four_2_five_rect
-from functions.distance_optimize import distance_optimize
 from functions.display import dialate_skel, disp_quadratic_optimization
 from functions.optimization import compute_model
 from functions.display import disp_rectangles
 from matplotlib import pyplot as plt
-from functions.distance_optimize import compute_spiral_path, bfs_distance
-import multiprocessing as mp
+from functions.distance_optimize import bfs_distance
 import copy
 
 def build_rect_list(range_skel, row_skel, img):
@@ -68,68 +67,27 @@ def build_rectangles(range_skel, col_skel):
     return rect, num_ranges, num_rows
 
 def sparse_optimize(rect_list, model, opt_param_dict):
-    # Pull the params
-    ncores = opt_param_dict["ncore"]
-    nstart = opt_param_dict["nstart"]
-    opt_param_dict['model'] = model
-
-    start_indx = np.random.choice(len(rect_list), nstart, replace = False)
-    start_points = []
-    for indx in start_indx:
-        tmp = (rect_list[indx].range, rect_list[indx].row)
-        start_points.append(tmp)
-
     print("Starting Sparse Optimization")
+    flag = False
+    while not flag:
+        results = bfs_distance(copy.copy(rect_list), opt_param_dict, model, start_point= None)
+        flag = results[0]
+        if not flag:
+            print("No Solution Found increasing radius")
+            opt_param_dict['valid_radi'] += 1
+        else:
+            print("Found Valid Solution")
 
-    with mp.Pool(processes = ncores) as pool:
-        results = pool.map(bfs_distance, [(copy.copy(rect_list), opt_param_dict, start_point) for start_point in start_points])
+    print(f"Final Score {results[1]}")
 
-    bfs_distance((rect_list, opt_param_dict, start_points[0]))
-    print("")
+    return results[2]
 
-    
-    
-    return
 
 def final_optimize(rect_list, opt_param_dict, initial_model):
     # Pre Process the rectangles
-    preprocess_rect_list(rect_list, opt_param_dict)
     
-    # Define the parameters
-    kernel_radi = opt_param_dict['kernel_radi']
     model = initial_model
-
-   
-    
-    print(f"Starting Final Position Optimization")
-    epoch = 1
-    while epoch <= opt_param_dict['max_epoch']:
-        print(f"Epoch {epoch}")
-        xy_update = []
-        hw_update = []
-        theta_update = []
-
-        # Optimize the rectangles
-        for rect in tqdm(rect_list, desc = "Position Optimization"):
-            test = rect.optimize_xy(model, opt_param_dict)
-        
-        print("T")
-         # Find the outliers
-        identify_outliers(rect_list, kernel_radi)
-            #xy_update.append(rect.optimize_XY(model, opt_param_dict, display = True))
-            #hw_update.append(rect.optimize_HW(model, opt_param_dict))
-            #theta_update.append(rect.optimize_theta(model, opt_param_dict))
-
-
-        print(f"Update Stats: \n"
-            f"  Position: {np.sum(xy_update)} / {len(rect_list)}\n"
-            f"  Height / Width: {np.sum(hw_update)} / {len(rect_list)}\n"
-            f"  Theta: {np.sum(theta_update)} / {len(rect_list)}\n")
-       
-        # Distance Optimization
-        distance_optimize(rect_list, kernel_radi, weight = .5, update = True)
-        epoch += 1
-        
+    results = bfs_distance(copy.copy(rect_list), opt_param_dict, model, start_point = None)
 
 
     print("Finished Final Optimization")

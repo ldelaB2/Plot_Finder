@@ -2,8 +2,7 @@ import numpy as np
 import copy
 
 from functions.optimization import compute_score_list
-from functions.rect_list import sparse_optimize
-from functions.distance_optimize import distance_optimize
+from functions.distance_optimize import bfs_add_rect
 
 
 def find_next_rect(rect_list, direction, edge = False):
@@ -30,10 +29,10 @@ def find_next_rect(rect_list, direction, edge = False):
         tmp2_rect = copy.copy(rect_list[max_val_rect[e]])
 
         # Reset the flags
+        tmp1_rect.clear()
+        tmp2_rect.clear()
         tmp1_rect.added = True
         tmp2_rect.added = True
-        tmp1_rect.flagged = False
-        tmp2_rect.flagged = False
 
 
         if direction == 'range':
@@ -84,7 +83,7 @@ def check_within_img(min_list, max_list):
     return min_flag, max_flag
 
 def compare_next_to_current(rect_list, model, direction, opt_param_dict):
-    score_method = "L2"
+    score_method = "NCC"
     # Find current edge
     current_min, current_max = find_next_rect(rect_list, direction, edge = True)
     # Find next set
@@ -93,31 +92,30 @@ def compare_next_to_current(rect_list, model, direction, opt_param_dict):
     # Check if the mean center is within the image for the next then optimize and compute the score
     next_min_flag, next_max_flag = check_within_img(next_min, next_max)
     if next_min_flag:
-        sparse_optimize(next_min, model, opt_param_dict)
         next_min_score = compute_score_list(next_min, model, method = score_method)
     else:
-        next_min_score = np.inf
+        next_min_score = -np.inf
 
     if next_max_flag:
-        sparse_optimize(next_max, model, opt_param_dict)
         next_max_score = compute_score_list(next_max, model, method = score_method)
     else:
-        next_max_score = np.inf
+        next_max_score = -np.inf
 
     # Compute the current scores
     current_min_score = compute_score_list(current_min, model, method = score_method)
     current_max_score = compute_score_list(current_max, model, method = score_method)
 
     # Compare the next min to current max
-    if next_min_score < current_max_score:
+    if next_min_score > current_max_score:
         drop_list = current_max
+        add_list, _ = bfs_add_rect(next_min, rect_list, model, opt_param_dict)
         add_list = next_min
         update_flag = True
 
     # Compare next max to current min
-    elif next_max_score < current_min_score:
+    elif next_max_score > current_min_score:
         drop_list = current_min
-        add_list = next_max
+        add_list, _ = bfs_add_rect(next_max, rect_list, model, opt_param_dict)
         update_flag = True
 
     else:
@@ -146,8 +144,18 @@ def remove_rectangles(rect_list, direction, num_2_remove, model):
     return rect_list
 
 def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
-    score_method = "L1"
-    kernel_radi = opt_param_dict['kernel_radi']
+    # Initialize the last min and max lists
+    last_min_list = None
+    last_min_score = None
+
+    last_max_list = None
+    last_max_score = None
+
+    min_stop = False
+    max_stop = False
+
+    min_score = -np.inf
+    max_score = -np.inf
 
     for cnt in range(num_2_add):
         # Find the next rectangles
@@ -156,35 +164,43 @@ def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
         # Check to make sure the rectangles are within the image
         min_flag, max_flag = check_within_img(min_list, max_list)
 
-        if min_flag:
-            # Optimize the rectangles
-            for rect in min_list:
-                rect.optimize_xy(model, opt_param_dict)
-
-            # Distance Optimization
-            distance_optimize(min_list, kernel_radi, existing_list = rect_list, weight = .5, update = True)
-            
-            # Compute the score
-            min_score = compute_score_list(min_list, model, method = score_method)
+        if min_flag and not min_stop:
+            if max_score == 0:
+                min_list = last_min_list
+                min_score = last_min_score
+                print(f"Using Last Min {direction} with score {min_score}")
+            else:
+                # Optimize the rectangles
+                min_list, min_score = bfs_add_rect(min_list, rect_list, model, opt_param_dict)
+                
+                if min_score == 0:
+                    min_stop = True
+                last_min_list = min_list
+                last_min_score = min_score
         else:
-            min_score = np.inf
+            min_score = -np.inf
             print("Min Rectangles are out of bounds")
 
-        if max_flag:
-            # Optimize the rectangles
-            for rect in max_list:
-                rect.optimize_xy(model, opt_param_dict)
-            # Distance Optimization
-            distance_optimize(max_list, kernel_radi, existing_list = rect_list, weight = .5, update = True)
-            # Compute the score
-            max_score = compute_score_list(max_list, model, method = score_method)
+        if max_flag and not max_stop:
+            if min_score == 0:
+                max_list = last_max_list
+                max_score = last_max_score
+                print(f"Using Last Max {direction} with score {max_score}")
+            else:
+                # Optimize the rectangles
+                max_list, max_score = bfs_add_rect(max_list, rect_list, model, opt_param_dict)
+
+                if max_score == 0:
+                    max_stop = True
+                last_max_list = max_list
+                last_max_score = max_score
         else:
-            max_score = np.inf
+            max_score = -np.inf
             print("Max Rectangles are out of bounds")
 
 
         # Adding the rectangles with min score
-        if min_score >= max_score:
+        if min_score < max_score:
             print(f"Adding Max {direction}")
             for rect in max_list:
                 rect_list.append(rect)
