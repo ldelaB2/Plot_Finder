@@ -121,6 +121,9 @@ class model():
         for rect in rect_list:
             rect.compute_template_center(template_img, x_bounds, y_bounds)
 
+    def move_rectangles(self, rect_list):
+        for rect in rect_list:
+            rect.compute_new_center()
 
     def sparce_optimize(self, rect_list, epoch):
         x_radi = self.param_dict['x_radi']
@@ -140,7 +143,7 @@ class model():
 
             # Compute the mean model and feature dictionary
             mean_model = np.mean(good_models, axis = 0).astype(np.float32)
-            feature_dict = self.compute_feature_dict(good_models)
+            #feature_dict = self.compute_feature_dict(good_models)
 
             # Compute the template image
             template_img = self.compute_template_image(mean_model, base_img)
@@ -148,112 +151,11 @@ class model():
             # Compute the template image center
             self.compute_template_center(template_img, rect_list, x_bounds, y_bounds)
             # Compute the feature points center
-            self.compute_feature_center(feature_dict, rect_list, feature_threshold)
+            #self.compute_feature_center(feature_dict, rect_list, feature_threshold)
 
             # Move the rectangles
-            print("")
+            self.move_rectangles(rect_list)
             print(f"Finished Epoch: {k+1}")
-
-
-
-
-
-    def compute_feature_points(self, feature_dict, rect_list):
-        for rect in rect_list:
-            search_img = rect.compute_search_image(20, 50)
-            orb = cv.ORB_create()
-            kp, des = orb.detectAndCompute(search_img, None)
-
-            matches_db = {}
-            bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck = True)
-            match_count = [0] * len(kp)
-
-            for key, value in feature_dict.items():
-                matches = bf.match(des, value['descriptors'])
-                for match in matches:
-                    match_count[match.queryIdx] += 1
-
-                matches = sorted(matches, key = lambda x: x.distance)
-                matches_db[key] = matches
-
-            threshold = len(feature_dict) * .5
-
-            filtered_keypoints = []
-            filtered_descriptors = []
-
-            for i, count in enumerate(match_count):
-                if count > threshold:
-                    filtered_keypoints.append(kp[i])
-                    filtered_descriptors.append(des[i])
-
-            
-
-            if len(filtered_keypoints) > 0:
-                x = np.array([kp.pt[0] for kp in filtered_keypoints])
-                y = np.array([kp.pt[1] for kp in filtered_keypoints])
-                x = x.mean().astype(int)
-                y = y.mean().astype(int)
-
-                #filtered_img = cv.drawKeypoints(search_img, filtered_keypoints, None, color = (0, 255, 0))
-                #plt.scatter(x, y, color = 'red')
-                #plt.imshow(filtered_img)
-                #plt.pause(1)
-                #plt.close()
-                dx = x - search_img.shape[1] // 2
-                dy = y - search_img.shape[0] // 2
-                rect.center_x = rect.center_x + dx
-                rect.center_y = rect.center_y + dy
-
-            else:
-                print("No Matches Found")
-
-        print("Finished Computing Feature Points")
-        return
-           
-
-
-
-
-            
-
-
-
-
-
-
-    def move_rectangles(self, rect_list, x_offset, y_offset):
-        x_radi = self.param_dict['x_radi']
-        y_radi = self.param_dict['y_radi']
-
-        for rect in rect_list:
-            # Compute the corner points
-            points = rect.compute_corner_points()
-            top_left = points[-1]
-
-            # Subtract the offset
-            top_left[0] = top_left[0] - x_offset
-            top_left[1] = top_left[1] - y_offset
-
-            # Compute the bounds
-            min_x = top_left[0] - x_radi
-            max_x = top_left[0] + x_radi
-            min_y = top_left[1] - y_radi
-            max_y = top_left[1] + y_radi
-
-            # Check the bounds
-            min_x = max(0, min_x)
-            max_x = min(self.template_img.shape[1], max_x)
-            min_y = max(0, min_y)
-            max_y = min(self.template_img.shape[0], max_y)
-
-            search_img = self.template_img[min_y:max_y, min_x:max_x]
-            min_point = np.argwhere(search_img == search_img.min())[0]
-
-            dy = min_point[0] - y_radi
-            dx = min_point[1] - x_radi
-
-            rect.center_x = rect.center_x + dx
-            rect.center_y = rect.center_y + dy
 
 
 # Parallel Functions

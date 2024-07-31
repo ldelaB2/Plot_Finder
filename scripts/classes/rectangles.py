@@ -176,11 +176,11 @@ class rectangle:
         temp_search_x = [top_left[0] - self.x_radi, top_left[0] + self.x_radi]
         temp_search_y = [top_left[1] - self.y_radi, top_left[1] + self.y_radi]
 
-        #temp_search_x[0] = max(temp_search_x[0], 0)
-        #temp_search_x[1] = min(temp_search_x[1], template_img.shape[1])
+        temp_search_x[0] = max(temp_search_x[0], 0)
+        temp_search_x[1] = min(temp_search_x[1], template_img.shape[1])
 
-        #temp_search_y[0] = max(temp_search_y[0], 0)
-        #temp_search_y[1] = min(temp_search_y[1], template_img.shape[0])
+        temp_search_y[0] = max(temp_search_y[0], 0)
+        temp_search_y[1] = min(temp_search_y[1], template_img.shape[0])
 
         temp_search_img = template_img[temp_search_y[0]:temp_search_y[1], temp_search_x[0]:temp_search_x[1]]
         min_point = np.argwhere(temp_search_img == temp_search_img.min())[0]
@@ -193,6 +193,21 @@ class rectangle:
 
         return
 
+    def compute_new_center(self):
+        #total_dx = np.mean(self.feat_dx + self.temp_dx).astype(int)
+        #total_dy = np.mean(self.feat_dy + self.temp_dy).astype(int)
+        total_dx = np.mean(0 + self.temp_dx).astype(int)
+        total_dy = np.mean(0 + self.temp_dy).astype(int)
 
+        proposed_center_x = self.center_x + total_dx
+        proposed_center_y = self.center_y + total_dy
+
+        new_center_x = np.clip(proposed_center_x, self.center_x_bounds[0], self.center_x_bounds[1])
+        new_center_y = np.clip(proposed_center_y, self.center_y_bounds[0], self.center_y_bounds[1])
+
+        self.center_x = new_center_x
+        self.center_y = new_center_y
+
+        return
  
     
