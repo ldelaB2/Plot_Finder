@@ -11,7 +11,6 @@ from functions.wavepad import process_wavepad
 from functions.rect_list import build_rect_list, sparse_optimize, final_optimize, set_range_row, set_id
 from functions.rect_list_processing import remove_rectangles, add_rectangles, double_check
 
-
 class wavepad:
     def __init__(self, range_wavepad, row_wavepad, params, img):
         self.params = params
@@ -58,17 +57,9 @@ class wavepad:
         self.create_opt_param_dict("sparse")
 
         # Initial model build by optimizing initial rect_list
-        self.model = model(initial_rect_list, self.opt_param_dict)
-        # Computing the initial model
-        initial_model = compute_model(initial_rect_list, self.model_shape, shift = True)
-        
+        self.model = model(self.opt_param_dict)
+        self.model.sparce_optimize(initial_rect_list, 20)
 
-        # Preform the first optimization
-        self.initial_rect_list = sparse_optimize(initial_rect_list, initial_model, self.opt_param_dict)
-        # Recompute the model
-        self.initial_model = compute_model(initial_rect_list, self.model_shape, shift = True)
-        self.initial_rect_list = initial_rect_list
-        
         print("Finished Building Initial Rectangles")
        
     def phase_three(self):
@@ -126,11 +117,12 @@ class wavepad:
         opt_param_dict['optimization_loss'] = "L1"
         opt_param_dict['neighbor_radi'] = 2
         opt_param_dict['ncore'] = self.params["num_cores"]
+        opt_param_dict['model_shape'] = self.model_shape
 
         if phase == "sparse":
             opt_param_dict['x_radi'] = 20
             opt_param_dict['y_radi'] = 50
-            opt_param_dict['epoch'] = 3
+            opt_param_dict['num_models'] = 100
 
         elif phase == "fine":
             opt_param_dict['max_epoch'] = 5

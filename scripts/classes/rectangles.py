@@ -74,30 +74,7 @@ class rectangle:
 
         return new_img
     
-    def create_search_img(self):
-        half_width = self.width // 2
-        half_height = self.height // 2
-        search_img_x_bound = [self.min_center_x - half_width, self.max_center_x + half_width]
-        search_img_y_bound = [self.min_center_y - half_height, self.max_center_y + half_height]
-        search_img = self.img[search_img_y_bound[0]:search_img_y_bound[1], search_img_x_bound[0]:search_img_x_bound[1]]
-        
-        if search_img.size == 0:
-            return None
-        
-        search_img_mean = np.mean(search_img)
-        search_img_std = np.std(search_img)
-
-        if search_img_std == 0:
-            return None
-        
-        search_img = (search_img - search_img_mean) / search_img_std
-        search_img = search_img.astype(np.float32)
-        
-        return search_img
-    
-    def optimize_hw(self, model, param_dict):
-        print("T")
-
+ 
     def clear(self):
         self.flagged = False
         self.added = False
@@ -109,58 +86,26 @@ class rectangle:
         self.valid_points = None
         self.score = None
 
-    def compute_neighbor_dxy(self, nbr):
-        rng_away = abs(self.range - nbr[0])
-        row_away = abs(self.row - nbr[1])
+  
+    def optimization_pre_process(self, x_radi, y_radi):
+        self.x_radi = x_radi
+        self.y_radi = y_radi
 
-        if nbr[0] < self.range:
-            rng_away = -rng_away
-        if nbr[1] < self.row:
-            row_away = -row_away
+        # Compute the bounds
+        self.center_x_bounds = [self.center_x - x_radi, self.center_x + x_radi]
+        self.center_y_bounds = [self.center_y - y_radi, self.center_y + y_radi]
+        self.center_x_bounds[0] = max(self.center_x_bounds[0], 0)
+        self.center_y_bounds[0] = max(self.center_y_bounds[0], 0)
+        self.center_x_bounds[1] = min(self.center_x_bounds[1], self.img.shape[1])
+        self.center_y_bounds[1] = min(self.center_y_bounds[1], self.img.shape[0])
 
-        dx = row_away * self.width
-        dy = rng_away * self.height
-
-        theta = np.radians(self.theta)
-        dx_rot = dx * np.cos(theta) - dy * np.sin(theta)
-        dy_rot = dx * np.sin(theta) + dy * np.cos(theta)
-
-        dx_rot = int(np.round(dx_rot))
-        dy_rot = int(np.round(dy_rot))
-
-        self.nbr_dxy[nbr] = (dx_rot, dy_rot)
+        # Compute the search image features
+        self.compute_search_image(x_radi, y_radi)
 
 
-    def update_neighbor_position(self):
-        for nbr in self.neighbors:
-            if nbr not in self.nbr_dxy:
-                self.compute_neighbor_dxy(nbr)
-
-            dx, dy = self.nbr_dxy[nbr]
-            expected_center = (self.center_x + dx, self.center_y + dy)
-            self.nbr_position[nbr] = expected_center
-
-
-    def predict_neighbor_position(self, nbr):
-        if self.neighbors is None:
-            print("No neighbors")
-            return            
-
-        if nbr not in self.nbr_dxy:
-            self.compute_neighbor_dxy(nbr)
-            dx, dy = self.nbr_dxy[nbr]
-            expected_center = (self.center_x + dx, self.center_y + dy)
-            self.nbr_position[nbr] = expected_center
-
-
-        expected_center = self.nbr_position[nbr]
-
-        return expected_center
-
-
-    def compute_template_score(self, model, x_radi, y_radi):
-        half_width = model.shape[1] // 2
-        half_height = model.shape[0] // 2
+    def compute_search_image(self, x_radi, y_radi):
+        half_width = self.width // 2
+        half_height = self.height // 2
         search_img_x_bound = [self.center_x - half_width - x_radi, self.center_x + half_width + x_radi]
         search_img_y_bound = [self.center_y - half_height -y_radi, self.center_y + half_height + y_radi]
 
@@ -170,267 +115,84 @@ class rectangle:
         search_img_y_bound[1] = min(search_img_y_bound[1], self.img.shape[0])
 
         search_img = self.img[search_img_y_bound[0]:search_img_y_bound[1], search_img_x_bound[0]:search_img_x_bound[1]]
-        
-        search_img_mean = np.mean(search_img)
-        search_img_std = np.std(search_img)
-        search_img = (search_img - search_img_mean) / search_img_std
-        search_img = search_img.astype(np.float32)
+        self.search_img_shape = search_img.shape
 
-        results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
+        self.compute_search_img_features(search_img)
 
-        return results
+        return 
 
-
-        """
-
-        if search_img.size == 0:
-            results = None
-        else:
-            search_img_mean = np.mean(search_img)
-            search_img_std = np.std(search_img)
-            if search_img_std == 0:
-                results = None
-            else:
-                search_img = (search_img - search_img_mean) / search_img_std
-                search_img = search_img.astype(np.float32)
-
-                try:
-                    results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
-                except:
-                    results = None
-
-       
-
-        if results is not None:
-            x_val = np.arange(0, results.shape[1], 1)
-            y_val = np.arange(0, results.shape[0], 1)
-
-            x_median = np.round(np.median(x_val)).astype(int)
-            y_median = np.round(np.median(y_val)).astype(int)
-            x_val = x_val - x_median
-            y_val = y_val - y_median
-            x_val = x_val + self.center_x
-            y_val = y_val + self.center_y
-
-            X, Y = np.meshgrid(x_val, y_val)
-            points = np.column_stack((X.ravel(), Y.ravel(), results.ravel()))
-
-        else:
-            x = np.arange(self.center_x - x_radi, self.center_x + x_radi, 1)
-            y = np.arange(self.center_y - y_radi, self.center_y + y_radi + 1, 1)
-            X, Y = np.meshgrid(x, y)
-            points = np.column_stack((X.ravel(), Y.ravel(), np.zeros(X.size)))
-
-        self.template_points = set()
-        self.template_points_values = {}
-        for point in points:
-            self.template_points.add((point[0], point[1]))
-            self.template_points_values[(point[0], point[1])] = point[2]
-
-        """
-
-    def find_center(self):
-        scores = []
-        for point in list(self.valid_points):
-            score = self.template_points_values[point]
-            scores.append((point[0], point[1], score))
-
-        self.center_scores = np.array(scores)
-        self.center_scores = self.center_scores[self.center_scores[:,2].argsort()[::-1]]
-        self.center_indx = -1
-        self.move_center()
-
-    def move_center(self):
-        self.center_indx += 1
-
-        if self.center_indx > self.center_scores.shape[0] - 1:
-            updated = False
-        else:
-            updated = True
-        
-            self.center_x = self.center_scores[self.center_indx, 0].astype(int)
-            self.center_y = self.center_scores[self.center_indx, 1].astype(int)
-            self.score = self.center_scores[self.center_indx, 2]
-            self.update_neighbor_position()
-
-        return updated
-
-
-    def optimize_xy(self, model, param_dict):
-        # Check if flagged
-        if self.flagged:
-            return False
-        
-        # Create the search image
-        search_img = self.create_search_img()
-        if search_img is None:
-            return False
-        
-        half_width = self.width // 2
-        half_height = self.height // 2
-
-        results = cv.matchTemplate(search_img, model, cv.TM_CCORR_NORMED)
-        min_val, max_val, min_loc, max_loc = cv.minMaxLoc(results)
-
-        estimated_center_x = max_loc[0] + half_width
-        current_center_x = search_img.shape[1] // 2
-        estimated_center_y = max_loc[1] + half_height
-        current_center_y = search_img.shape[0] // 2
-        dx = estimated_center_x - current_center_x
-        dy = estimated_center_y - current_center_y
-        
-        self.center_x += dx
-        self.center_y += dy
-
-        return True
-            
-
-
-    def disp_optimization(self, train_points, test_points, pred_model, model, loss):
-        # Shrink the test_points
-        indx = np.arange(0, test_points.shape[0], 5)
-        test_points = test_points[indx]
-        # Compute train obj_val
-        train_obj = self.test_points(model, "XY", train_points, loss)
-        # Compute all obj_val
-        all_obj_val = self.test_points(model, "XY", test_points, loss)
-        # Compute the predicted obj_val
-        pred_obj_val = pred_model.predict(test_points)
-
-        plt.close('all')
-        # Plot the results
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection = '3d')
-        ax.scatter(train_points[:,0], train_points[:,1], train_obj, c = 'b', marker = '.', label = 'Training Points')
-        ax.scatter(test_points[:,0], test_points[:,1], all_obj_val, c = 'r', marker = '.', label = 'True Values')
-        ax.scatter(test_points[:,0], test_points[:,1], pred_obj_val, c = 'g', marker = '.', label = 'Predicted Values')
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Objective Function')
-        plt.legend()
-        plt.show()
-
-    def optimize_theta(self, model, param_dict):
-        loss = param_dict['optimization_loss']
-        current_img = self.create_sub_image()
-        current_score = compute_score(current_img, model, method = loss)
-        thetas = []
-        for theta in self.dtheta:
-            new_img = self.move_rectangle(0, 0, theta)
-            tmp_score = compute_score(new_img, model, method = loss)
-            thetas.append(tmp_score)
-
-        fopt = np.min(thetas)
-        xopt = self.dtheta[np.argmin(thetas)]
-        if fopt < current_score:
-            self.theta += xopt
-            update_flag = True
-        else:
-            update_flag = False
-        
-        return update_flag
+    def compute_search_img_features(self, search_img):
+        orb = cv.ORB_create()
+        kp, des = orb.detectAndCompute(search_img, None)
+        self.search_img_features = {"kp": kp, "des": des}
+        return
     
-  
+    def compute_feature_center(self, feature_dict, threshold):
+        kp = self.search_img_features['kp']
+        des = self.search_img_features['des']
+
+        bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck = True)
+        match_count = [0] * len(kp)
+
+        for key, value in feature_dict.items():
+            matches = bf.match(des, value['descriptors'])
+            for match in matches:
+                match_count[match.queryIdx] += 1
 
 
-    def optimize_XY(self, model, param_dict, display = False):
-        loss = param_dict['optimization_loss']
-        num_points = param_dict['ntest_XY']
-        optimization_flag = param_dict['preform_XY_optimization']
+        threshold = len(feature_dict) * threshold
 
-        # Compute the current score
-        current_score = compute_score(self.create_sub_image(), model, method = loss)
+        filtered_keypoints = []
+        filtered_descriptors = []
 
-        # Compute the objective function
-        X, Y = np.meshgrid(self.dx, self.dy)
-        all_points = np.column_stack((X.ravel(), Y.ravel()))
-        train_indx = np.random.choice(all_points.shape[0], num_points, replace = False)
-        train_points = all_points[train_indx]
-        all_points = np.delete(all_points, train_indx, axis = 0)
+        for i, count in enumerate(match_count):
+            if count > threshold:
+                filtered_keypoints.append(kp[i])
+                filtered_descriptors.append(des[i])
 
-        if optimization_flag:
-            # Fit the model
-            pred_model, x_train_opt, f_train_opt = self.fit_model(model, "XY", train_points, loss, method = "RF", degree = 2)
-            # Predict the objective function
-            all_obj = pred_model.predict(all_points)
-
-            # Find the best points
-            sorted_indx = np.argsort(all_obj)
-            sorted_indx = sorted_indx[:num_points]
-            best_points = all_points[sorted_indx]
-            
-            # Test the best points
-            best_obj_val = self.test_points(model, "XY", best_points, loss)
-            best_x_opt = best_points[np.argmin(best_obj_val)]
-            best_f_opt = np.min(best_obj_val)
-
-            # Check if the optimization worked
-            if best_f_opt < f_train_opt:
-                fopt = best_f_opt
-                xopt = best_x_opt
-            else:
-                fopt = f_train_opt
-                xopt = x_train_opt
-
-            if display:
-                self.disp_optimization(train_points, all_points, pred_model, model, loss)
+        if len(filtered_keypoints) > 0:
+            x = np.array([kp.pt[0] for kp in filtered_keypoints])
+            y = np.array([kp.pt[1] for kp in filtered_keypoints])
+            x = x.mean().astype(int)
+            y = y.mean().astype(int)
+            dx = x - self.search_img_shape[1] // 2
+            dy = y - self.search_img_shape[0] // 2
         else:
-            obj_val = self.test_points(model, "XY", train_points, loss)
-            fopt = np.min(obj_val)
-            xopt = train_points[np.argmin(obj_val)]
+            dx = 0
+            dy = 0
 
-        # Update the rectangle if needed
-        if fopt < current_score:
-            self.center_x += xopt[0]
-            self.center_y += xopt[1]
-            update_flag = True
-        else:
-            update_flag = False
+        self.feat_dx = dx
+        self.feat_dy = dy
 
-        
+        return
+       
+    def compute_template_center(self, template_img, x_offset, y_offset):
+        points = self.compute_corner_points()
+        top_left = points[-1]
 
-        return update_flag
+        top_left[0] = top_left[0] - x_offset[0]
+        top_left[1] = top_left[1] - y_offset[0]
 
-    def test_points(self, model, phase, points, loss):
-        obj_val = []
-        if phase == "XY":
-            for point in points:
-                new_img = self.move_rectangle(point[0], point[1], 0)
-                tmp_score = compute_score(new_img, model, method = loss)
-                obj_val.append(tmp_score)
-        elif phase == "HW":
-            for point in points:
-                new_img = self.shrink_rectangle(point[1], point[0])
-                tmp_score = compute_score(new_img, model, method = loss)
-                obj_val.append(tmp_score)
-        elif phase == "Theta":
-            for point in points:
-                new_img = self.move_rectangle(0, 0, point)
-                tmp_score = compute_score(new_img, model, method = loss)
-                obj_val.append(tmp_score)
-        else:
-            print("Invalid phase for fitting model")
-            return
-        
-        return obj_val
+        temp_search_x = [top_left[0] - self.x_radi, top_left[0] + self.x_radi]
+        temp_search_y = [top_left[1] - self.y_radi, top_left[1] + self.y_radi]
 
-    def fit_model(self, model, phase, train_points, loss, method = "RF", degree = 2):
-        obj_val = self.test_points(model, phase, train_points, loss)
+        #temp_search_x[0] = max(temp_search_x[0], 0)
+        #temp_search_x[1] = min(temp_search_x[1], template_img.shape[1])
 
-        train_points = np.array(train_points)
-        if method == "RF":
-            pred_model = make_pipeline(PolynomialFeatures(degree = degree), RandomForestRegressor())
-        elif method == "LR":
-            pred_model = make_pipeline(PolynomialFeatures(degree = degree), LinearRegression())
-        else:
-            print("Invalid method for fitting model")
-            return
-        
-        pred_model.fit(train_points, obj_val)
-        f_train_opt = np.min(obj_val)
-        x_train_opt = train_points[np.argmin(obj_val)]
+        #temp_search_y[0] = max(temp_search_y[0], 0)
+        #temp_search_y[1] = min(temp_search_y[1], template_img.shape[0])
 
-        return pred_model, x_train_opt, f_train_opt
+        temp_search_img = template_img[temp_search_y[0]:temp_search_y[1], temp_search_x[0]:temp_search_x[1]]
+        min_point = np.argwhere(temp_search_img == temp_search_img.min())[0]
+
+        dy = min_point[0] - self.y_radi
+        dx = min_point[1] - self.x_radi
+
+        self.temp_dx = dx
+        self.temp_dy = dy
+
+        return
 
 
+ 
     

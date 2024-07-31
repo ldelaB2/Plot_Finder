@@ -276,6 +276,7 @@ def compute_neighbors(rect_list, neighbor_radi, existing_list = None):
         tmp_neighbors = np.delete(tmp_neighbors, self_indx, axis = 0)
         tmp_neighbors = [tuple(nbr) for nbr in tmp_neighbors]
         rect.neighbors = tmp_neighbors
+        rect.update_neighbor_position()
 
     return
 
@@ -302,3 +303,4 @@ def geometric_median(points, weights=None, tol = 1e-2):
             return new_guess
         
         guess = new_guess
+
