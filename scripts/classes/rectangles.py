@@ -118,6 +118,7 @@ class rectangle:
         self.search_img_shape = search_img.shape
 
         self.compute_search_img_features(search_img)
+        self.search_img = search_img
 
         return 
 
@@ -198,6 +199,8 @@ class rectangle:
         #total_dy = np.mean(self.feat_dy + self.temp_dy).astype(int)
         total_dx = np.mean(0 + self.temp_dx).astype(int)
         total_dy = np.mean(0 + self.temp_dy).astype(int)
+        #total_dx = np.mean(self.feat_dx + 0).astype(int)
+        #total_dy = np.mean(self.feat_dy + 0).astype(int)
 
         proposed_center_x = self.center_x + total_dx
         proposed_center_y = self.center_y + total_dy

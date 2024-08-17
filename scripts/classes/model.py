@@ -139,11 +139,11 @@ class model():
 
         for k in range(epoch):
             # PCA Filter the models
-            good_models = self.pca_filter(rect_list, 75)
+            good_models = self.pca_filter(rect_list, 50)
 
             # Compute the mean model and feature dictionary
             mean_model = np.mean(good_models, axis = 0).astype(np.float32)
-            #feature_dict = self.compute_feature_dict(good_models)
+            feature_dict = self.compute_feature_dict(good_models)
 
             # Compute the template image
             template_img = self.compute_template_image(mean_model, base_img)
@@ -151,7 +151,7 @@ class model():
             # Compute the template image center
             self.compute_template_center(template_img, rect_list, x_bounds, y_bounds)
             # Compute the feature points center
-            #self.compute_feature_center(feature_dict, rect_list, feature_threshold)
+            self.compute_feature_center(feature_dict, rect_list, feature_threshold)
 
             # Move the rectangles
             self.move_rectangles(rect_list)
