@@ -4,7 +4,6 @@ import multiprocessing, os
 
 from classes.sub_image import sub_image
 from classes.wave_pad import wavepad
-from functions.pre_processing import create_g, rotate_img, find_g_weights
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 
@@ -18,13 +17,7 @@ class find_plots():
         self.phase_three() # Find the plots
 
     def pre_process(self):
-        find_g_weights(self.pf_job.img_ortho, self.pf_job.params)
-        # Creating the g image
-        self.g_ortho = create_g(self.pf_job.img_ortho, self.pf_job.params)
-
-        # Rotate the image
-        self.inverse_rotation, self.g_ortho, self.img_ortho = rotate_img(self.g_ortho, self.pf_job.img_ortho, self.pf_job.params['rotation_angle'])
-
+       
         # Pull required params
         self.box_radi = [self.pf_job.params["box_radius_height"], self.pf_job.params["box_radius_width"]]
         self.freq_filter_width = self.pf_job.params["freq_filter_width"]

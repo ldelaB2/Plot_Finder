@@ -1,0 +1,18 @@
+2024-09-06 15:25:19 - pre_processing - INFO - Logger initialized
+2024-09-06 15:25:19 - pre_processing - INFO - Required user params found
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/plots
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/QC
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/shapefiles
+2024-09-06 15:25:19 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/optimization_models
+2024-09-06 15:25:19 - pre_processing - INFO - Number of cores set to: 10
+2024-09-06 15:25:20 - pre_processing - INFO - Extracting metadata from ortho image
+2024-09-06 15:25:20 - pre_processing - INFO - Calculating GSD
+2024-09-06 15:25:20 - pre_processing - INFO - Geographic Coordinate Reference System detected
+2024-09-06 15:25:20 - pre_processing - INFO - Calculated GSD (cm): 0.8281
+2024-09-06 15:25:20 - pre_processing - INFO - Reading image at: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Images/0712_tw.tif
+2024-09-06 15:25:20 - pre_processing - INFO - Using grayscale method: AUTO
+2024-09-06 15:25:20 - pre_processing - INFO - Using grayscale features of ['HSV', 'GRAY', 'LAB']
+2024-09-06 15:25:20 - pre_processing - INFO - Using polynomial features of degree 3
+2024-09-06 15:25:20 - pre_processing - INFO - Computing auto gray weights

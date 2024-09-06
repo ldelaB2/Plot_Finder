@@ -1,31 +1,16 @@
-import cv2 as cv
-import rasterio, os
-from functions.pre_processing import set_params, create_output_dirs
 from classes.find_plots import find_plots
 from classes.optimize_plots import optimize_plots
+from classes.params import pf_params
+from classes.logger import pf_logger
 
 class plot_finder_job:
-    def __init__(self, params_path):
-        self.pre_process(params_path)
-        
-    
-    def pre_process(self, params_path):
-        self.params = set_params(params_path)
-        # Pull the image name
-        self.params["img_name"] = os.path.splitext(os.path.basename(self.params["img_path"]))[0]
-
-        # Extracting the meta data
-        with rasterio.open(self.params["img_path"]) as src:
-            self.meta_data = src.meta
-
-        # Reading in the image
-        self.img_ortho = cv.imread(self.params["img_path"])
-        
-        #Creating the output directories
-        self.output_paths = create_output_dirs(self.params)   
+    def __init__(self, default_param_path, user_param_path, logger_path):
+        self.loggers = pf_logger(logger_path)
+        self.params = pf_params(default_param_path, user_param_path, self.loggers.pre_processing)
+        self.run() 
 
     def run(self):
-        self.print_plot_finder_logo(intro = True)
+        #self.print_plot_finder_logo(intro = True)
 
         if self.params["find_plots"] == True:
             # Finding the plots
@@ -33,10 +18,9 @@ class plot_finder_job:
 
         if self.params["optimize_plots"] == True:
             # Optimizing the plots
-            #optimize_plots(self)
-            pass
+            optimize_plots(self)
 
-        self.print_plot_finder_logo(intro = False)
+        #self.print_plot_finder_logo(intro = False)
 
     def print_plot_finder_logo(self, intro = True):
         # Plotting the log

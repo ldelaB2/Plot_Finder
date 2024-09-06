@@ -5,91 +5,117 @@ from functions.general import bindvec
 from matplotlib import pyplot as plt
 import random
 from sklearn.preprocessing import PolynomialFeatures
-from scipy.optimize import dual_annealing, minimize
 from functions.general import bindvec
+from pyswarm import pso
+from pyproj import Transformer, CRS
 
 def set_params(param_path):
-    # Read in the default params
-    default_param_path = os.path.join(os.path.dirname(__file__), "default_params.json")
-    with open(default_param_path, 'r') as file:
-        default_params = json.load(file)
-
-    try:
-        with open(param_path, 'r') as file:
-            params = json.load(file)
-    except FileNotFoundError:
-        print("No user params found, please create a params.json file")
-        exit()
-    except json.decoder.JSONDecodeError:
-        print("Invalid JSON format, please fix the params.json file")
-        exit()
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        exit()
-
-    # Check if all the default params are in the user params
-    for param, default_value in default_params.items():
-        if param not in params:
-            params[param] = default_value
     
-    if params["img_path"] is None:
-        print("img_path not specified in params.json")
-        exit()
-    if params["output_path"] is None:
-        print("output_path not specified in params.json")
-        exit()
-    if params["nrows"] is None:
-        print("nrows not specified in params.json")
-        exit()
-    if params["nranges"] is None:
-        print("nranges not specified in params.json")
-        exit()
+    # Compute the grayscale weights if needed
+    if params["gray_scale_method"] == "AUTO":
+        if params["auto_grey_weights"] is None or params["recompute_auto_grey_weights"] == True:
+            opt_weights, opt_theta = find_g_weights(img, params)
+            params["auto_grey_weights"] = opt_weights
 
-    # Create the output directory if it does not exist
-    try:
-        os.mkdir(params["output_path"])
-    except:
-        pass
-    
-    # Check if the number of cores is specified
-    if params["num_cores"] is None:
-        params["num_cores"] = multiprocessing.cpu_count()
-        if params["num_cores"] is None:
-            params["num_cores"] = os.cpu_count()
-            if params["num_cores"] is None:
-                params["num_cores"] = 1
+        if params["rotation_angle"] == "AUTO":
+            params["rotation_angle"] = opt_theta
+
+
+    # Save the params
+    with open(param_path, 'w') as file:
+        json.dump(params, file, indent = 4)
     
    
     return params
 
-def find_g_weights(img, params):
-    print("Finding optimal grayscale weights")
-    row_spacing_inch = 30
-    gsd_cm = .7
-    poly_feature_deg = 3
+def compute_GSD(meta_data, logger):
+    # Get the current Coordinate Reference System
+    current_crs = meta_data["crs"]
+    crs_object = CRS.from_user_input(current_crs)
+    
+    # Find the GSD in the x and y direction in the original crs
+    gsd_x = meta_data["transform"][0]
+    gsd_y = meta_data["transform"][4]
 
-    signal = 10
+    # Find the original lat and lon
+    original_lat = meta_data["transform"][5]
+    original_lon = meta_data["transform"][2]
 
+    if crs_object.is_geographic:
+        logger.info("Geographic Coordinate Reference System detected")
+
+        # Dynamically select the UTM zone based on longitude
+        utm_zone = int((original_lon + 180) // 6) + 1
+        is_northern = original_lat >= 0
+        
+        # Use UTM CRS for re-projection
+        target_crs = CRS.from_proj4(f"+proj=utm +zone={utm_zone} +datum=WGS84 +{'north' if is_northern else 'south'}")
+
+        # Create the transformer to convert the original crs to the target crs
+        transformer = Transformer.from_crs(current_crs, target_crs, always_xy=True)
+
+        # Find the x and y in the new crs
+        x1, y1 = transformer.transform(original_lon, original_lat)
+
+        # Calculate the GSD in the x direction
+        x2, y2 = transformer.transform(original_lon + gsd_x, original_lat)
+        gsd_x_m = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+        # Calculate the GSD in the y direction
+        x2, y2 = transformer.transform(original_lon, original_lat + gsd_y)
+        gsd_y_m = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+        gsd_cm = np.round((gsd_x_m + gsd_y_m) / 2 * 100, 4)
+
+    elif crs_object.is_projected:
+        logger.info("Projected Coordinate Reference System detected")
+
+        axis_info = crs_object.axis_info[0]
+        units = axis_info.unit_name
+
+        if units == 'metre':
+            gsd_cm = np.round((gsd_x + gsd_y) / 2 * 100, 4)
+        else:
+            logger.critical("Invalid unit detected please convert your image to a coordinate system with units of meters or degrees to use AUTO GSD")
+            exit(1)
+
+    return gsd_cm
+
+
+def compute_gray_weights(params, logger):
+    # Pull the required params
+    row_spacing_inch = params["row_spacing_in"]
+    gsd_cm = params["GSD"]
+    poly_feature_deg = params["auto_gray_poly_features_degree"]
+    gray_features = params["auto_gray_features"]
+    num_images = params["auto_gray_num_subimages"]
+    planned_signal = params["auto_gray_signal"]
+    img_shape = params["img_ortho_shape"]
+    frequency_width = params["freq_filter_width"]
+
+    # Calculating the test image size
     row_spacing_cm = row_spacing_inch * 2.54
     signal_pixel = row_spacing_cm / gsd_cm
-    test_img_size = np.round(signal_pixel * signal).astype(int)
+    test_img_size = np.round(signal_pixel * planned_signal).astype(int)
     test_img_radi = test_img_size // 2
 
     #Valid test image center points
-    valid_x = [test_img_radi, img.shape[1] - test_img_radi]
-    valid_y = [test_img_radi, img.shape[0] - test_img_radi]
+    valid_x = [test_img_radi, img_shape[1] - test_img_radi]
+    valid_y = [test_img_radi, img_shape[0] - test_img_radi]
 
-    n_images = 5
-    x_centers = random.sample(range(valid_x[0], valid_x[1]), n_images)
-    y_centers = random.sample(range(valid_y[0], valid_y[1]), n_images)
+    # Randomly select the center points
+    x_centers = random.sample(range(valid_x[0], valid_x[1]), num_images)
+    y_centers = random.sample(range(valid_y[0], valid_y[1]), num_images)
 
+    # Create the sample images
     img_features = []
-    for n in range(n_images):
+    for n in range(num_images):
         x = x_centers[n]
         y = y_centers[n]
-        sample_img = img[y - test_img_radi:y + test_img_radi, x - test_img_radi:x + test_img_radi]
-        img_features.append(compute_features(sample_img))
+        sample_img = params["img_ortho"][y - test_img_radi:y + test_img_radi, x - test_img_radi:x + test_img_radi]
+        img_features.append(compute_features(sample_img, gray_features, logger))
     
+    # Convert the list to a numpy array
     img_features = np.array(img_features)
     final_shape = img_features.shape[:3]
     
@@ -101,34 +127,43 @@ def find_g_weights(img, params):
     poly = PolynomialFeatures(poly_feature_deg)
     poly_features = poly.fit_transform(features)
     
-    # Create the distance from center matrix
-    img_center = np.array([test_img_radi, test_img_radi])
-    Y, X = np.ogrid[:final_shape[1], :final_shape[2]]
-    dist_from_center = np.sqrt((X - img_center[0]) ** 2 + (Y - img_center[1]) ** 2)
+    
 
-    # Create the signal filter
-    #radi = 10
-    sig_filter = np.zeros((final_shape[1]))
-    freq_sig = np.array([img_center[1] - signal, img_center[1] + signal])
-    sig_filter[freq_sig] = 1
-    thickness = 2
+    # Define the weight range
+    weight_range = 5
+    theta_range = 90
+    signal_range = 2
 
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (thickness, thickness))
-    sig_filter = cv.dilate(sig_filter, kernel, iterations = 1)
+    def objective_function(args):
+        opt_signal = np.round((args[0] * signal_range + planned_signal)).astype(int)
+        opt_weights = args[1:] * weight_range
 
-    noise_filter = 1 - sig_filter
-
-    # Create the objective function
-    def objective_function(weights):
+        # Apply the weights
+        weights = opt_weights * weight_range
         gray_imgs = poly_features @ weights
         gray_imgs = gray_imgs.reshape(final_shape)
-        score = []
 
+        # Compute the signal and noise filters
+        # Create the signal filter
+        sig_filter = np.zeros((final_shape[1]))
+        freq_sig = np.array([test_img_radi - opt_signal, test_img_radi + opt_signal])
+        sig_filter[freq_sig] = 1
+        
+        # Dilate the signal filter
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (frequency_width, frequency_width))
+        sig_filter = cv.dilate(sig_filter, kernel, iterations = 1)
+
+        # Create the noise filter
+        noise_filter = 1 - sig_filter
+
+        score = []
         # Compute the 2D fft 
-        for n in range(n_images):
+        for n in range(num_images):
+            # Normalize the image
             sub_img = gray_imgs[n,:,:]
             sub_img = (bindvec(sub_img) * 255).astype(np.uint8)
 
+            # Find the signal and noise
             signal = np.mean(sub_img, axis = 0)
             fft = np.fft.fft(signal - np.mean(signal))
             fft = np.fft.fftshift(fft)
@@ -138,6 +173,7 @@ def find_g_weights(img, params):
             sig = np.mean(amp[sig_filter == 1])
             noise = np.mean(amp[noise_filter == 1])
 
+            # Compute the PSNR
             psnr = 10 * np.log10(sig**2 / noise**2)
             score.append(psnr)
 
@@ -145,111 +181,38 @@ def find_g_weights(img, params):
 
         return -score
 
-    bounds = [(-2, 2)] * poly_features.shape[1]
-    x0 = np.random.uniform(-10, 10, poly_features.shape[1])
-    result = minimize(objective_function, x0, method = 'L-BFGS-B', options = {'maxiter': 300})
-    result = dual_annealing(objective_function, bounds, maxiter = 100)
-
-    best_weights = result.x
-    gray_imgs = poly_features @ best_weights
-    gray_imgs = (bindvec(gray_imgs) * 255).astype(np.uint8)
-    gray_imgs = gray_imgs.reshape(final_shape)
-    print()
-
-def compute_features(img):
-    # Convert the image to float32
-    original_img = img.astype(np.float32)
-
-    # Compute the BI, SCI, GLI, HI, NGRDI, SI, VARI, BGI, GREY, LAB, HSV
-    img = original_img.copy()
-    pixel_mat = np.sqrt((img[:,:,0] ** 2 + img[:,:,1] ** 2 + img[:,:,2] ** 2)/3)
-    bi_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = img[:,:,0] - img[:,:,1]
-    denominator = img[:,:,0] + img[:,:,1]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    sci_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = 2 * img[:,:,1] - img[:,:,0] - img[:,:,2]
-    denominator = 2 * img[:,:,0] + img[:,:,1] + img[:,:,2]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    gli_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = 2 * img[:,:,0] - img[:,:,1] - img[:,:,2]
-    denominator = img[:,:,1] - img[:,:,2]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    hi_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = img[:,:,1] - img[:,:,0]
-    denominator = img[:,:,1] + img[:,:,0]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    ngrdi_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = img[:,:,0] - img[:,:,2]
-    denominator = img[:,:,0] + img[:,:,2]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    si_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = img[:,:,1] - img[:,:,0]
-    denominator = img[:,:,1] + img[:,:,0] - img[:,:,2]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    vari_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
-
-    img = original_img.copy()
-    numerator = img[:,:,2]
-    denominator = img[:,:,1]
-    valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-    pixel_mat = np.zeros_like(numerator)
-    pixel_mat[valid] = numerator[valid] / denominator[valid]
-    bgi_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
+    # Optimize the objective function
+    lb = np.array([-1] * (poly_features.shape[1] + 1))
+    ub = np.array([1] * (poly_features.shape[1] + 1))
+    xopt, fopt = pso(objective_function, lb, ub, swarmsize = 100, maxiter = 100, minstep = 1e-4, minfunc = 1e-4)
     
-    img = original_img.copy()
-    pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2GRAY)
-    grey_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
 
-    img = original_img.copy()
-    pixel_mat =cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2LAB)[:,:,1]
-    lab_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
+    print(f"Optimal Weights Found! PSNR: {np.round(fopt,2)}")
+    print(f"Optimal Theta = {opt_theta}")
+    print(f"Optimal Weights for Degree {poly_feature_deg} = {opt_weights}")
 
-    img = original_img.copy()
-    pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2HSV)[:,:,0]
-    hsv_img = np.round(bindvec(pixel_mat) * 255).astype(np.uint8)
+    # Create the grayscale image
+    return opt_weights, opt_theta
 
-    features = [sci_img, gli_img, hi_img, ngrdi_img, si_img, vari_img, bgi_img, grey_img, lab_img, hsv_img]
-    #features = [grey_img, lab_img, hsv_img]
+
+
+
+
+def compute_features(img, gray_features, logger):
+    features = []
+    for feature in gray_features:
+        features.append(compute_gray(False, feature, img, False, logger))
+
     features = np.array(features)
     features = features.transpose(1,2,0)
 
     return features
 
-
-
-
-
-def create_g(img, params):
+def compute_gray(custom, method, image, invert, logger):
     # convert the img to float32 and read in the grayscale method
-    img = img.astype(np.float32)
-    method = params["gray_scale_method"]
+    img = np.copy(image).astype(np.float32)
 
-    if params["custom_grayscale"] == True:
+    if custom:
         # Check if the custom method is specified
         eval_expression = method.replace('R', 'img[:,:,0]').replace('G', 'img[:,:,1]').replace('B', 'img[:,:,2]')
 
@@ -257,14 +220,18 @@ def create_g(img, params):
         try:
             pixel_mat = eval(eval_expression)
         except Exception as e:
-            print(f"Error evaluating custom method: {e}")
-            return
+            logger.critical(f"Error evaluating custom grayscale method: {e}")
+            exit(1)
 
         # Handle division by zero
         pixel_mat = np.where(np.isfinite(pixel_mat), pixel_mat, 0)
 
     else:
-        if method == 'BI':
+        if method == 'AUTO':
+            print("test")
+
+
+        elif method == 'BI':
             pixel_mat = np.sqrt((img[:,:,0] ** 2 + img[:,:,1] ** 2 + img[:,:,2] ** 2)/3)
 
         elif method == 'SCI':
@@ -309,7 +276,7 @@ def create_g(img, params):
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
             pixel_mat = np.where(valid, numerator / denominator, 0)
 
-        elif method == 'GREY':
+        elif method == 'GRAY':
             pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2GRAY)
 
         elif method == 'LAB':
@@ -319,73 +286,22 @@ def create_g(img, params):
             pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2HSV)[:,:,0]
 
         else:
-            print("Invalid Grayscale method")
-            exit()
+            logger.critical(f"Invalid grayscale method: {method}")
+            exit(1)
 
     # Normalize the pixel matrix
     pixel_mat = bindvec(pixel_mat)
     pixel_mat = np.round(pixel_mat * 255).astype(np.uint8)
 
     # Invert the image if needed
-    if params["gray_scale_invert"] == True:
+    if invert:
         pixel_mat = 255 - pixel_mat
 
     return pixel_mat
 
-def create_output_dirs(params):
-    subdir = os.path.join(params["output_path"], params["img_name"] + "_pf_output")
-    output_paths = {}
-    try:
-        os.mkdir(subdir)
-    except:
-        pass
-
-    #Check if extracting plots
-    if params["save_plots"] == True:
-        plot_dir = os.path.join(subdir, "plots")
-        output_paths["plot_dir"] = plot_dir
-        try:
-            os.mkdir(plot_dir)
-        except:
-            pass
-
-    # Check if saving QC
-    if params["QC_depth"] != "none":
-        qc_dir = os.path.join(subdir, "QC")
-        output_paths["qc_dir"] = qc_dir
-        try:
-            os.mkdir(qc_dir)
-        except:
-            pass
-
-    # Check if saving Shapefiles
-    if params["create_shapefile"] == True:
-        shape_dir = os.path.join(subdir, "shapefiles")
-        output_paths["shape_dir"] = shape_dir
-        try:
-            os.mkdir(shape_dir)
-        except:
-            pass
-
-    # Check if exporting optimization models
-    if params["optimize_plots"] == True and params["optimization_export_model"] == True:
-        opt_dir = os.path.join(subdir, "optimization_models")
-        output_paths["opt_dir"] = opt_dir
-        try:
-            os.mkdir(opt_dir)
-        except:
-            pass
-
-    return output_paths
-
-def rotate_img(g_img, rgb_img, rotation_angle):
-    if rotation_angle is None:
-        theta = find_theta(g_img)
-    else:
-        theta = rotation_angle
-
+def rotate_img(img, theta):
     # Computing params for the inverse rotation matrix
-    height, width = g_img.shape[:2]
+    height, width = img.shape[:2]
     rotation_matrix = cv.getRotationMatrix2D((width/2,height/2), theta, 1)
     
     # Determine the size of the rotated image
@@ -404,36 +320,11 @@ def rotate_img(g_img, rgb_img, rotation_angle):
     inverse_rotation_matrix[1, 2] += (height - new_height) / 2
     
     # Rotate the image
-    g_img = cv.warpAffine(g_img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
-    rgb_img = cv.warpAffine(rgb_img, rotation_matrix, (new_width, new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = (0,0,0))
+    if len(img.shape) == 2:
+        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
+    else:
+        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = np.zeros(img.shape[2]))
  
     # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
-    return inverse_rotation_matrix, g_img, rgb_img
+    return inverse_rotation_matrix, rotated_img
 
-def find_theta(g_img):
-    # Calculating 2d FFT
-    mean_subtracted = g_img - np.mean(g_img)
-    rot_fft = np.fft.fft2(mean_subtracted)
-    rot_fft = np.fft.fftshift(rot_fft)
-    rot_fft = np.abs(rot_fft)
-
-    # Creating the sub image
-    box_radi = 30
-    x_center = rot_fft.shape[1] // 2
-    y_center = rot_fft.shape[0] // 2
-    sub_image = rot_fft[y_center - box_radi:y_center + box_radi, x_center - box_radi:x_center + box_radi]
-    #f_size = 3
-    #sub_image[box_radi - f_size:box_radi + f_size, box_radi - f_size:box_radi + f_size] = 0
-
-    x1,x2 = np.meshgrid(np.arange(-box_radi,box_radi),np.arange(-box_radi,box_radi))
-    features = np.stack((x1.ravel(),x2.ravel()),axis = 1)
-    response = sub_image.reshape((box_radi * 2) ** 2, 1)
-    w = np.linalg.inv(features.T @ features) @ features.T @ response
-    theta = np.degrees(np.arctan(w[1] / w[0]))[0]
-
-    x = np.arange(60)
-    y = x * np.cos(np.deg2rad(theta))
-    y = -y
-
-
-    return theta

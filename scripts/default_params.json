@@ -1,0 +1,57 @@
+{   
+    "_comment": "Required parameters for the script to run",
+    "ortho_path": null,
+    "output_directory": null,
+    "number_rows": null,
+    "number_ranges": null,
+    "row_spacing_in": null,
+
+    "_comment": "Parameters for gray scale method",
+    "custom_grayscale": false,
+    "gray_scale_method": "AUTO",
+    "gray_scale_invert": false,
+
+    "_comment": "Parameters for auto gray scale method",
+    "auto_gray_poly_features_degree": 3,
+    "auto_gray_features":["HSV", "GRAY", "LAB"],
+    "recompute_auto_gray_weights": false,
+    "auto_gray_num_subimages": 5,
+    "auto_gray_signal": 10,
+    
+    "_comment": "Processing parameters",
+    "find_plots": true,
+    "optimize_plots": false,
+    "create_shapefile": true,
+    "shapefile_path": null,
+    "save_plots": false,
+
+    "_comment": "Optional parameters",
+    "GSD": "AUTO",
+    "rotation_angle": "AUTO",
+    "num_cores": "AUTO",
+    "QC_depth": "min",
+
+    "_comment": "Labeling parameters",
+    "label_start": "TL",
+    "label_flow": "snake",
+
+    "_comment": "Find plots parameters",
+    "box_radius_height": 800, 
+    "box_radius_width": 500,
+    "freq_filter_width": 2,
+    "row_sig_remove": 2,
+    "num_sig_returned": 2,
+    "fine_grid_radi": 5,
+    "poly_deg_range": 3,
+    "poly_deg_row": 1,
+    "wavepad_filter_method": "hist",
+
+    "_comment": "Optimization parameters",
+    "save_optimization_model": false,
+
+    "_commment": "Internal Parameters (Do not change)",
+    "meta_data": null,
+    "image_name": null,
+    "pf_output_directorys": null,
+    "auto_gray_weights": null
+}
