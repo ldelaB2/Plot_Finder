@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 import random
 from sklearn.preprocessing import PolynomialFeatures
 from functions.general import bindvec
+from scipy.optimize import dual_annealing
 from pyswarm import pso
 from pyproj import Transformer, CRS
 
@@ -88,103 +89,100 @@ def compute_gray_weights(params, logger):
     gsd_cm = params["GSD"]
     poly_feature_deg = params["auto_gray_poly_features_degree"]
     gray_features = params["auto_gray_features"]
-    num_images = params["auto_gray_num_subimages"]
-    planned_signal = params["auto_gray_signal"]
+    #num_images = params["auto_gray_num_subimages"]
+    num_features = 50
     img_shape = params["img_ortho_shape"]
     frequency_width = params["freq_filter_width"]
 
-    # Calculating the test image size
+    # Calculating the expected signal based on the row spacing and GSD in pixels
     row_spacing_cm = row_spacing_inch * 2.54
     signal_pixel = row_spacing_cm / gsd_cm
-    test_img_size = np.round(signal_pixel * planned_signal).astype(int)
-    test_img_radi = test_img_size // 2
 
-    #Valid test image center points
-    valid_x = [test_img_radi, img_shape[1] - test_img_radi]
-    valid_y = [test_img_radi, img_shape[0] - test_img_radi]
+    # Calculating the expected signal baised on GSD and row spacing in frequency
+    expected_signal = np.round(img_shape[1] / signal_pixel).astype(int)
+    min_expected_signal = np.round(expected_signal * .75).astype(int)
+    max_expected_signal = np.round(expected_signal * 1.25).astype(int)
 
-    # Randomly select the center points
-    x_centers = random.sample(range(valid_x[0], valid_x[1]), num_images)
-    y_centers = random.sample(range(valid_y[0], valid_y[1]), num_images)
+    # Randomly select the rows and columns to sample from the original image
+    x_centers = random.sample(range(0, img_shape[1]), num_features)
+    y_centers = random.sample(range(0, img_shape[0]), num_features)
 
-    # Create the sample images
-    img_features = []
-    for n in range(num_images):
+    # Sampeling the image at the selected rows and columns
+    hort_img = np.zeros(( num_features, img_shape[1], img_shape[2]))
+    for n in range(num_features):
         x = x_centers[n]
         y = y_centers[n]
-        sample_img = params["img_ortho"][y - test_img_radi:y + test_img_radi, x - test_img_radi:x + test_img_radi]
-        img_features.append(compute_features(sample_img, gray_features, logger))
-    
-    # Convert the list to a numpy array
-    img_features = np.array(img_features)
-    final_shape = img_features.shape[:3]
+        hort_img[n,:,:] = params["img_ortho"][y,:,:]
+
+   # Compute the features for the horizontal and vertical images
+    hort_features = compute_features(hort_img, gray_features, logger)
+         
+    # Find the final size of the features
+    final_shape = hort_features.shape[:2]
     
     # Reshape the sample images
-    n_pixels = img_features.shape[0] * img_features.shape[1] * img_features.shape[2]
-    features = img_features.reshape((n_pixels, img_features.shape[3]))
+    n_pixels = hort_features.shape[0] * hort_features.shape[1]
+    features = hort_features.reshape((n_pixels, hort_features.shape[2]))
 
     # Create the polynomial features
     poly = PolynomialFeatures(poly_feature_deg)
     poly_features = poly.fit_transform(features)
-    
-    
 
-    # Define the weight range
-    weight_range = 5
-    theta_range = 90
-    signal_range = 2
+    # Define the center
+    center_x = final_shape[1] // 2
+
+    # Create the signal filter
+    sig_filter = np.zeros(final_shape)
+    sig_filter[:,(center_x - max_expected_signal):(center_x - min_expected_signal)] = 1
+    sig_filter[:,(center_x + min_expected_signal):(center_x + max_expected_signal)] = 1
+
+    sig_indices = np.where(sig_filter == 1)
+    noise_indices = np.where(sig_filter == 0)
 
     def objective_function(args):
-        opt_signal = np.round((args[0] * signal_range + planned_signal)).astype(int)
-        opt_weights = args[1:] * weight_range
+        # apply the weights to the polynomial features
+        weights = args
 
-        # Apply the weights
-        weights = opt_weights * weight_range
-        gray_imgs = poly_features @ weights
-        gray_imgs = gray_imgs.reshape(final_shape)
+        # Apply the weights to the polynomial features
+        gray_img = poly_features @ weights
+        # Reshape the grayscale image
+        gray_img = gray_img.reshape(final_shape)
+        # Normalize the grayscale image
+        gray_img = (bindvec(gray_img) * 255).astype(np.uint8)
 
-        # Compute the signal and noise filters
-        # Create the signal filter
-        sig_filter = np.zeros((final_shape[1]))
-        freq_sig = np.array([test_img_radi - opt_signal, test_img_radi + opt_signal])
-        sig_filter[freq_sig] = 1
-        
-        # Dilate the signal filter
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (frequency_width, frequency_width))
-        sig_filter = cv.dilate(sig_filter, kernel, iterations = 1)
+        # Compute the 2D fft of the image
+        gray_img = gray_img - np.mean(gray_img)
+        two_d_fft = np.fft.fft2(gray_img)
+        two_d_fft = np.fft.fftshift(two_d_fft)
+        amp = np.abs(two_d_fft)
+        amp = np.log(amp + 1)
 
-        # Create the noise filter
-        noise_filter = 1 - sig_filter
+        sig = np.mean(amp[sig_indices])
+        noise = np.mean(amp[noise_indices])
 
-        score = []
-        # Compute the 2D fft 
-        for n in range(num_images):
-            # Normalize the image
-            sub_img = gray_imgs[n,:,:]
-            sub_img = (bindvec(sub_img) * 255).astype(np.uint8)
+        psnr = 10 * np.log10(sig**2 / noise**2)
 
-            # Find the signal and noise
-            signal = np.mean(sub_img, axis = 0)
-            fft = np.fft.fft(signal - np.mean(signal))
-            fft = np.fft.fftshift(fft)
-            amp = np.abs(fft)
-            amp = amp.reshape(-1,1)
-
-            sig = np.mean(amp[sig_filter == 1])
-            noise = np.mean(amp[noise_filter == 1])
-
-            # Compute the PSNR
-            psnr = 10 * np.log10(sig**2 / noise**2)
-            score.append(psnr)
-
-        score = np.mean(score)
-
-        return -score
+        return -psnr
 
     # Optimize the objective function
-    lb = np.array([-1] * (poly_features.shape[1] + 1))
-    ub = np.array([1] * (poly_features.shape[1] + 1))
-    xopt, fopt = pso(objective_function, lb, ub, swarmsize = 100, maxiter = 100, minstep = 1e-4, minfunc = 1e-4)
+    lb = np.array([-1] * (poly_features.shape[1]))
+    ub = np.array([1] * (poly_features.shape[1]))
+    f_opt, x_opt = pso(objective_function, lb, ub, swarmsize = 50, maxiter = 50, minfunc = 1e-4, omega = 1.5, phip = 0.5, phig = 0.5)
+    #bounds = list(zip(lb, ub))
+    #result = dual_annealing(objective_function, bounds, maxiter = 100)
+
+    #x_opt = result.x
+    #f_opt = result.fun
+
+    # Transform the original image
+    gray_img = params["img_ortho"].copy()
+    n_pixels = gray_img.shape[0] * gray_img.shape[1]
+    gray_img = gray_img.reshape((n_pixels, gray_img.shape[2]))
+    gray_img = poly.fit_transform(gray_img)
+    gray_img = gray_img @ f_opt
+    gray_img = gray_img.reshape(img_shape[:2])
+    gray_img = (bindvec(gray_img) * 255).astype(np.uint8)
+
     
 
     print(f"Optimal Weights Found! PSNR: {np.round(fopt,2)}")
