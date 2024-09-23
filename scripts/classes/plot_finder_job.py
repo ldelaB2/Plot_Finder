@@ -12,13 +12,13 @@ class plot_finder_job:
     def run(self):
         #self.print_plot_finder_logo(intro = True)
 
-        if self.params["find_plots"] == True:
+        if self.params.user_params["find_plots"] == True:
             # Finding the plots
-            find_plots(self)
+            find_plots(self.params.user_params, self.loggers)
 
-        if self.params["optimize_plots"] == True:
+        if self.params.user_params["optimize_plots"] == True:
             # Optimizing the plots
-            optimize_plots(self)
+            optimize_plots(self.params.user_params, self.loggers)
 
         #self.print_plot_finder_logo(intro = False)
 

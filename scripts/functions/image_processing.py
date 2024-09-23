@@ -50,6 +50,34 @@ def compute_points(center_x, center_y, theta, width, height, unit_sqr, img_shape
 
     return rotated_points
 
+def rotate_img(img, theta):
+    # Computing params for the inverse rotation matrix
+    height, width = img.shape[:2]
+    rotation_matrix = cv.getRotationMatrix2D((width/2,height/2), theta, 1)
+    
+    # Determine the size of the rotated image
+    cos_theta = np.abs(rotation_matrix[0, 0])
+    sin_theta = np.abs(rotation_matrix[0, 1])
+    new_width = int((height * sin_theta) + (width * cos_theta))
+    new_height = int((height * cos_theta) + (width * sin_theta))
+
+    # Adjust the translation in the rotation matrix to prevent cropping
+    rotation_matrix[0, 2] += (new_width - width) / 2
+    rotation_matrix[1, 2] += (new_height - height) / 2
+
+    # Creating the inverse rotation matrix
+    inverse_rotation_matrix = cv.getRotationMatrix2D((new_width/2,new_height/2), -theta, 1)
+    inverse_rotation_matrix[0, 2] += (width - new_width) / 2
+    inverse_rotation_matrix[1, 2] += (height - new_height) / 2
+    
+    # Rotate the image
+    if len(img.shape) == 2:
+        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
+    else:
+        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = np.zeros(img.shape[2]))
+ 
+    # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
+    return inverse_rotation_matrix, rotated_img
 
 def extract_rectangle(center_x, center_y, theta, width, height, unit_sqr, img):
     theta = np.radians(theta)

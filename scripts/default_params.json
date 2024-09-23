@@ -16,12 +16,10 @@
     "auto_gray_features":["HSV", "GRAY", "LAB"],
     "recompute_auto_gray_weights": false,
     "auto_gray_num_subimages": 5,
-    "auto_gray_signal": 10,
     
     "_comment": "Processing parameters",
     "find_plots": true,
     "optimize_plots": false,
-    "create_shapefile": true,
     "shapefile_path": null,
     "save_plots": false,
 
@@ -44,7 +42,6 @@
     "fine_grid_radi": 5,
     "poly_deg_range": 3,
     "poly_deg_row": 1,
-    "wavepad_filter_method": "hist",
 
     "_comment": "Optimization parameters",
     "save_optimization_model": false,

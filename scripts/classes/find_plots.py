@@ -9,27 +9,22 @@ from functions.general import create_shapefile
 
 
 class find_plots():
-    def __init__(self, plot_finder_job):
-        self.pf_job = plot_finder_job
-        self.pre_process() # Rotate the image and create the g image
+    def __init__(self, plot_finder_job_params, loggers):
+        self.params = plot_finder_job_params
+        self.loggers = loggers
         self.phase_one() # Create the sparse grid and find the dominant frequencies
         self.phase_two() # Create the fine grid and find the wavepad
         self.phase_three() # Find the plots
-
-    def pre_process(self):
-       
-        # Pull required params
-        self.box_radi = [self.pf_job.params["box_radius_height"], self.pf_job.params["box_radius_width"]]
-        self.freq_filter_width = self.pf_job.params["freq_filter_width"]
     
     def phase_one(self):
+        # Phase one calcualte the optimal signal
         # Pulling the params
-        row_sig_remove = self.pf_job.params["row_sig_remove"]
-        sparse_skip_radi = self.pf_job.params["sparse_grid_radi"]
-        num_sig_returned = self.pf_job.params["num_sig_returned"]
+        row_sig_remove = self.params["row_sig_remove"]
+        sparse_skip_radi = 100
+        num_sig_returned = self.params["num_sig_returned"]
         
         # Creating the sparse grid
-        sparse_grid, num_points = build_path(self.g_ortho.shape, self.box_radi, sparse_skip_radi * 2 + 1)
+        sparse_grid, num_points = build_path(self.params["img_ortho_shape"][:2], self.box_radi, sparse_skip_radi * 2 + 1)
         
         # Preallocate memory
         range_waves = np.zeros((num_points, (2 * self.box_radi[0])))

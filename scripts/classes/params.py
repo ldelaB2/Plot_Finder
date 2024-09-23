@@ -1,14 +1,13 @@
 import json, os, multiprocessing, rasterio
-from functions.pre_processing import compute_GSD, compute_gray_weights, compute_gray
+from functions.pre_processing import compute_GSD, compute_gray_weights, compute_gray, compute_theta
+from functions.image_processing import rotate_img
 import cv2 as cv
 
 class pf_params:
     def __init__(self, default_param_path, user_param_path, logger):
         self.logger = logger
-        self.user_param_path = user_param_path
         self.user_params = self.read_params(user_param_path)
         self.default_params = self.read_params(default_param_path)
-        
         self.create_params()
         
     
@@ -19,7 +18,9 @@ class pf_params:
         self.check_metadata()
         self.check_GSD()
         self.check_image()
+        self.check_theta()
         self.check_gray_method()
+        
 
     def read_params(self, param_path):
         try:
@@ -95,16 +96,17 @@ class pf_params:
             self.output_directories["quality"] = quality_directory
             create_dir(quality_directory, self.logger)
         
-        if self.user_params["create_shapefile"] == True:
-            shape_directory = os.path.join(img_directory, "shapefiles")
-            self.output_directories["shapefiles"] = shape_directory
-            create_dir(shape_directory, self.logger)
+        shape_directory = os.path.join(img_directory, "shapefiles")
+        self.output_directories["shapefiles"] = shape_directory
+        create_dir(shape_directory, self.logger)
 
         if self.user_params["optimize_plots"] == True and self.user_params["save_optimization_model"] == True:
             optimize_models_directory = os.path.join(img_directory, "optimization_models")
             self.output_directories["optimization_models"] = optimize_models_directory
             create_dir(optimize_models_directory, self.logger)
 
+        self.user_params["pf_output_directorys"] = self.output_directories
+        
     def check_num_cores(self):
         if self.user_params["num_cores"] == "AUTO":
             self.user_params["num_cores"] = multiprocessing.cpu_count()
@@ -156,12 +158,14 @@ class pf_params:
         if self.user_params["custom_grayscale"] == True:
             self.logger.info(f"Using custom grayscale method {self.user_params['gray_method']}")
         else:
+            self.user_params["custom_grayscale"] = False
+
             gray_method = self.user_params["gray_scale_method"].upper()
             valid_method = ['AUTO', 'BI', 'SCI', 'GLI', 'HI', 'NGRDI', 'SI', 'VARI', 'BGI','GRAY','LAB','HSV']
 
             if gray_method not in valid_method:
-                self.logger.warning(f"Invalid grayscale method: {gray_method}. Using AUTO")
-                gray_method = 'AUTO'
+                self.logger.warning(f"Invalid grayscale method: {gray_method}. Using LAB")
+                gray_method = 'LAB'
             else:
                 self.logger.info(f"Using grayscale method: {gray_method}")
 
@@ -172,6 +176,51 @@ class pf_params:
                 if self.user_params["recompute_auto_gray_weights"] == True or self.user_params["auto_gray_weights"] is None:
                     self.logger.info("Computing auto gray weights")
                     gray_weights = compute_gray_weights(self.user_params, self.logger)
+                    self.logger.info(f"Computed gray weights: {gray_weights}")
+                    self.user_params["auto_gray_weights"] = gray_weights
+                    self.user_params["gray_scale_invert"] = False
+
+        if self.user_params["gray_scale_invert"] == True:
+            self.logger.info("Gray scale will be inverted")
+        else:
+            self.logger.info("Gray scale will not be inverted")
+            self.user_params["gray_scale_invert"] = False
+        
+
+        # Compute the gray image
+        self.logger.info("Computing gray image")
+
+        # Compute the gray image
+        custom_flag = self.user_params["custom_grayscale"]
+        method = self.user_params["gray_scale_method"]
+        invert = self.user_params["gray_scale_invert"]
+        image = self.user_params["img_ortho"]
+        gray_img = compute_gray(custom_flag, method, image, invert, self.logger)
+        self.user_params["gray_img"] = gray_img
+
+        self.logger.info("Finished computing gray image")
+
+    def check_theta(self):
+        user_choice = self.user_params["rotation_angle"]
+        if user_choice is None:
+            self.logger.info("Rotation angle not found in user params. Setting to AUTO")
+            user_choice = "AUTO"
+        
+        if user_choice == "AUTO":
+            self.logger.info("Computing rotation angle")
+            theta = compute_theta(self.user_params, self.logger)
+            self.logger.info(f"Computed rotation angle: {theta} degrees")
+            self.user_params["rotation_angle"] = theta
+
+        else:
+            self.logger.info(f"Using user defined rotation angle: {user_choice}")
+            theta = user_choice
+
+        self.user_params["inverse_rotation_matrix"], self.user_params["img_ortho"] = rotate_img(self.user_params["img_ortho"], theta) 
+        self.logger.info("Finished rotating image")
+        
+
+
         
 
  

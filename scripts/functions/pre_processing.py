@@ -1,33 +1,10 @@
-import json, os, sys, multiprocessing
 import numpy as np
 import cv2 as cv
 from functions.general import bindvec
 from matplotlib import pyplot as plt
-import random
 from sklearn.preprocessing import PolynomialFeatures
 from functions.general import bindvec
-from scipy.optimize import dual_annealing
-from pyswarm import pso
 from pyproj import Transformer, CRS
-
-def set_params(param_path):
-    
-    # Compute the grayscale weights if needed
-    if params["gray_scale_method"] == "AUTO":
-        if params["auto_grey_weights"] is None or params["recompute_auto_grey_weights"] == True:
-            opt_weights, opt_theta = find_g_weights(img, params)
-            params["auto_grey_weights"] = opt_weights
-
-        if params["rotation_angle"] == "AUTO":
-            params["rotation_angle"] = opt_theta
-
-
-    # Save the params
-    with open(param_path, 'w') as file:
-        json.dump(params, file, indent = 4)
-    
-   
-    return params
 
 def compute_GSD(meta_data, logger):
     # Get the current Coordinate Reference System
@@ -82,129 +59,10 @@ def compute_GSD(meta_data, logger):
 
     return gsd_cm
 
-
 def compute_gray_weights(params, logger):
-    # Pull the required params
-    row_spacing_inch = params["row_spacing_in"]
-    gsd_cm = params["GSD"]
-    poly_feature_deg = params["auto_gray_poly_features_degree"]
-    gray_features = params["auto_gray_features"]
-    #num_images = params["auto_gray_num_subimages"]
-    num_features = 50
-    img_shape = params["img_ortho_shape"]
-    frequency_width = params["freq_filter_width"]
-
-    # Calculating the expected signal based on the row spacing and GSD in pixels
-    row_spacing_cm = row_spacing_inch * 2.54
-    signal_pixel = row_spacing_cm / gsd_cm
-
-    # Calculating the expected signal baised on GSD and row spacing in frequency
-    expected_signal = np.round(img_shape[1] / signal_pixel).astype(int)
-    min_expected_signal = np.round(expected_signal * .75).astype(int)
-    max_expected_signal = np.round(expected_signal * 1.25).astype(int)
-
-    # Randomly select the rows and columns to sample from the original image
-    x_centers = random.sample(range(0, img_shape[1]), num_features)
-    y_centers = random.sample(range(0, img_shape[0]), num_features)
-
-    # Sampeling the image at the selected rows and columns
-    hort_img = np.zeros(( num_features, img_shape[1], img_shape[2]))
-    for n in range(num_features):
-        x = x_centers[n]
-        y = y_centers[n]
-        hort_img[n,:,:] = params["img_ortho"][y,:,:]
-
-   # Compute the features for the horizontal and vertical images
-    hort_features = compute_features(hort_img, gray_features, logger)
-         
-    # Find the final size of the features
-    final_shape = hort_features.shape[:2]
-    
-    # Reshape the sample images
-    n_pixels = hort_features.shape[0] * hort_features.shape[1]
-    features = hort_features.reshape((n_pixels, hort_features.shape[2]))
-
-    # Create the polynomial features
-    poly = PolynomialFeatures(poly_feature_deg)
-    poly_features = poly.fit_transform(features)
-
-    # Define the center
-    center_x = final_shape[1] // 2
-
-    # Create the signal filter
-    sig_filter = np.zeros(final_shape)
-    sig_filter[:,(center_x - max_expected_signal):(center_x - min_expected_signal)] = 1
-    sig_filter[:,(center_x + min_expected_signal):(center_x + max_expected_signal)] = 1
-
-    sig_indices = np.where(sig_filter == 1)
-    noise_indices = np.where(sig_filter == 0)
-
-    def objective_function(args):
-        # apply the weights to the polynomial features
-        weights = args
-
-        # Apply the weights to the polynomial features
-        gray_img = poly_features @ weights
-        # Reshape the grayscale image
-        gray_img = gray_img.reshape(final_shape)
-        # Normalize the grayscale image
-        gray_img = (bindvec(gray_img) * 255).astype(np.uint8)
-
-        # Compute the 2D fft of the image
-        gray_img = gray_img - np.mean(gray_img)
-        two_d_fft = np.fft.fft2(gray_img)
-        two_d_fft = np.fft.fftshift(two_d_fft)
-        amp = np.abs(two_d_fft)
-        amp = np.log(amp + 1)
-
-        sig = np.mean(amp[sig_indices])
-        noise = np.mean(amp[noise_indices])
-
-        psnr = 10 * np.log10(sig**2 / noise**2)
-
-        return -psnr
-
-    # Optimize the objective function
-    lb = np.array([-1] * (poly_features.shape[1]))
-    ub = np.array([1] * (poly_features.shape[1]))
-    f_opt, x_opt = pso(objective_function, lb, ub, swarmsize = 50, maxiter = 50, minfunc = 1e-4, omega = 1.5, phip = 0.5, phig = 0.5)
-    #bounds = list(zip(lb, ub))
-    #result = dual_annealing(objective_function, bounds, maxiter = 100)
-
-    #x_opt = result.x
-    #f_opt = result.fun
-
-    # Transform the original image
-    gray_img = params["img_ortho"].copy()
-    n_pixels = gray_img.shape[0] * gray_img.shape[1]
-    gray_img = gray_img.reshape((n_pixels, gray_img.shape[2]))
-    gray_img = poly.fit_transform(gray_img)
-    gray_img = gray_img @ f_opt
-    gray_img = gray_img.reshape(img_shape[:2])
-    gray_img = (bindvec(gray_img) * 255).astype(np.uint8)
-
-    
-
-    print(f"Optimal Weights Found! PSNR: {np.round(fopt,2)}")
-    print(f"Optimal Theta = {opt_theta}")
-    print(f"Optimal Weights for Degree {poly_feature_deg} = {opt_weights}")
-
-    # Create the grayscale image
-    return opt_weights, opt_theta
-
-
-
-
-
-def compute_features(img, gray_features, logger):
-    features = []
-    for feature in gray_features:
-        features.append(compute_gray(False, feature, img, False, logger))
-
-    features = np.array(features)
-    features = features.transpose(1,2,0)
-
-    return features
+    logger.info("Not implemented yet")
+    #TODO implement this function
+    return
 
 def compute_gray(custom, method, image, invert, logger):
     # convert the img to float32 and read in the grayscale method
@@ -297,32 +155,68 @@ def compute_gray(custom, method, image, invert, logger):
 
     return pixel_mat
 
-def rotate_img(img, theta):
-    # Computing params for the inverse rotation matrix
-    height, width = img.shape[:2]
-    rotation_matrix = cv.getRotationMatrix2D((width/2,height/2), theta, 1)
-    
-    # Determine the size of the rotated image
-    cos_theta = np.abs(rotation_matrix[0, 0])
-    sin_theta = np.abs(rotation_matrix[0, 1])
-    new_width = int((height * sin_theta) + (width * cos_theta))
-    new_height = int((height * cos_theta) + (width * sin_theta))
 
-    # Adjust the translation in the rotation matrix to prevent cropping
-    rotation_matrix[0, 2] += (new_width - width) / 2
-    rotation_matrix[1, 2] += (new_height - height) / 2
 
-    # Creating the inverse rotation matrix
-    inverse_rotation_matrix = cv.getRotationMatrix2D((new_width/2,new_height/2), -theta, 1)
-    inverse_rotation_matrix[0, 2] += (width - new_width) / 2
-    inverse_rotation_matrix[1, 2] += (height - new_height) / 2
+def compute_theta(user_params, logger):
+    # Read in the image
+    img = user_params["img_ortho"]
     
-    # Rotate the image
-    if len(img.shape) == 2:
-        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
-    else:
-        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = np.zeros(img.shape[2]))
- 
-    # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
-    return inverse_rotation_matrix, rotated_img
+    # Compute the signal pixel
+    gsd = user_params["GSD"]
+    row_spacing_cm = user_params["row_spacing_in"] * 2.54
+    signal_pixel = np.round(row_spacing_cm / gsd).astype(int)
+
+    # Create the signal and noise masks
+    signal_mask = np.zeros((1, img.shape[1]))
+    sig_index = np.array([img.shape[1] // 2 - signal_pixel, img.shape[1] // 2 + signal_pixel])
+    signal_mask[0, sig_index] = 1
+    dialated_signal_mask = cv.dilate(signal_mask, np.ones((1, 5), np.uint8), iterations = 3)
+    
+    # Compute the signal and noise index
+    signal_index = np.where(dialated_signal_mask == 1)[1]
+    noise_index = np.where(dialated_signal_mask == 0)[1]
+
+    # Compute the gray image
+    gray_img = compute_gray(False, "GRAY", img, False, logger)
+    
+    def compute_theta_psnr(theta):
+        # Rotate the image
+        rotated_img = cv.warpAffine(gray_img, cv.getRotationMatrix2D((img.shape[1] / 2, img.shape[0] / 2), theta, 1), (img.shape[1], img.shape[0]), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)       
+
+        # compute the signal
+        signal = np.mean(rotated_img, axis = 0)
+        signal = signal - np.mean(signal)
+
+        fft = np.fft.fft(signal)
+        fft = np.fft.fftshift(fft)
+        fft = np.abs(fft)
+
+        # Compute the noise
+        noise = np.mean(fft[noise_index])
+        signal = np.mean(fft[signal_index])
+
+        psnr = 10 * np.log10(signal**2 / noise**2)
+        
+        return psnr
+    
+    # Compute the PSNR for each theta
+    theta_range = np.arange(-90, 90, 1)
+    psnr_list = []
+
+    for theta in theta_range:
+        psnr = compute_theta_psnr(theta)
+        psnr_list.append(psnr)
+
+    # Find the theta with the highest PSNR
+    opt_theta = theta_range[np.argmax(psnr_list)]
+
+    return opt_theta
+
+
+def compute_box_size(user_params, logger):
+    print()
+    
+def compute_signal(user_params, logger):
+
+
 
