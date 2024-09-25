@@ -34,12 +34,17 @@
     "label_flow": "snake",
 
     "_comment": "Find plots parameters",
-    "box_radius_height": 800, 
-    "box_radius_width": 500,
+    "box_radi": null,
+    "sparse_skip_radi": null,
+    "sparse_skip_num_images": 1000,
+    "frequency_supression": [0,0],
+
+    "fine_skip_radi": null,
+    "fine_skip_num_images": 50000,
+
     "freq_filter_width": 2,
-    "row_sig_remove": 2,
     "num_sig_returned": 2,
-    "fine_grid_radi": 5,
+ 
     "poly_deg_range": 3,
     "poly_deg_row": 1,
 

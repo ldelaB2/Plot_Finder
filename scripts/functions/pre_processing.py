@@ -5,6 +5,9 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import PolynomialFeatures
 from functions.general import bindvec
 from pyproj import Transformer, CRS
+from functions.image_processing import build_path
+from classes.sub_image import sub_image
+from matplotlib import pyplot as plt
 
 def compute_GSD(meta_data, logger):
     # Get the current Coordinate Reference System
@@ -155,8 +158,6 @@ def compute_gray(custom, method, image, invert, logger):
 
     return pixel_mat
 
-
-
 def compute_theta(user_params, logger):
     # Read in the image
     img = user_params["img_ortho"]
@@ -212,11 +213,151 @@ def compute_theta(user_params, logger):
 
     return opt_theta
 
-
 def compute_box_size(user_params, logger):
-    print()
+    img_size = user_params["img_ortho_shape"]
+    gsd = user_params["GSD"]
+    row_spacing_cm = user_params["row_spacing_in"] * 2.54
+    range_spacing_cm = user_params["row_length_ft"] * 30.48
+
+    signal_pixel_row = np.round(row_spacing_cm / gsd).astype(int)
+    signal_pixel_range = np.round(range_spacing_cm / gsd).astype(int)
+
+    target_row_signal = 12
+    target_range_signal = 5
+
+    desired_box_width = target_row_signal * signal_pixel_row // 2
+    desired_box_height = target_range_signal * signal_pixel_range // 2
     
+    if (2 * desired_box_width + 1) > img_size[1]:
+        logger.warning(f"Row signal is too small. Using Full Image Width")
+        box_width_radi = img_size[1] // 2 - 1
+        row_sig_remove = 0
+    else:
+        box_width_radi = desired_box_width
+        row_sig_remove = 4
+        logger.info(f"Using box width of {box_width_radi}")
+
+    if (2 * desired_box_height + 1) > img_size[0]:
+        logger.warning(f"Range signal is too small. Using Full Image Height")
+        box_height_radi = img_size[0] // 2 - 1
+        range_sig_remove = 0
+    else:
+        box_height_radi = desired_box_height
+        logger.info(f"Using box height of {box_height_radi}")
+        range_sig_remove = 2
+
+    logger.info(f"Frequency Supression: Row: {row_sig_remove}, Range: {range_sig_remove}")
+
+    box_radi = (box_height_radi, box_width_radi)
+    frequency_supression = (row_sig_remove, range_sig_remove)
+
+    return box_radi, frequency_supression
+
+def compute_skip(img_size, box_radi, num_images, logger):
+    valid_cols = np.array([1 + box_radi[1], img_size[1] - box_radi[1]])
+    valid_rows = np.array([1 + box_radi[0], img_size[0] - box_radi[0]])
+
+    col_range = valid_cols[1] - valid_cols[0]
+    row_range = valid_rows[1] - valid_rows[0]
+    
+    ratio = col_range / row_range
+
+    num_col_samples = int(np.sqrt(num_images * ratio))
+    num_row_samples = int(np.sqrt(num_images / ratio))
+
+    col_spacing = int(col_range / num_col_samples)
+    row_spacing = int(row_range / num_row_samples)
+
+    if col_spacing < 1:
+        col_spacing = 1
+        logger.warning("Col spacing is too small. Using 1")
+    else:
+        logger.info(f"Col Spacing: {col_spacing}")
+    if row_spacing < 1:
+        row_spacing = 1
+        logger.warning("Row spacing is too small. Using 1")
+    else:
+        logger.info(f"Row Spacing: {row_spacing}")
+
+    
+    skip = (row_spacing, col_spacing)
+    return skip
+
 def compute_signal(user_params, logger):
+    # Pulling the params
+    img_shape = user_params["img_ortho_shape"]
+    box_radi = user_params["box_radi"]
+    frequency_supression = user_params["frequency_supression"]
+    sparse_skip_radi = user_params["sparse_skip_radi"]
+    sparse_skip_num_images = user_params["sparse_skip_num_images"]
+    img = user_params["gray_img"]
+    freq_filter_width = user_params["freq_filter_width"]
+    num_sig_returned = user_params["num_sig_returned"]
+    gsd = user_params["GSD"]
+
+    # Check if the box_radi and frequency_supression are None
+    if box_radi is None or frequency_supression is None:
+        logger.info("Computing box size")
+        box_radi, frequency_supression = compute_box_size(user_params, logger)
+
+        # Update the user params
+        user_params["box_radi"] = box_radi
+        user_params["frequency_supression"] = frequency_supression
+    else:
+        logger.info("Using user specified box size")
+
+    # Check if the sparse_skip_radi is None
+    if sparse_skip_radi is None:
+        logger.info(f"Computing sparse skip using {sparse_skip_num_images} images")
+        sparse_skip_radi = compute_skip(img_shape, box_radi, sparse_skip_num_images, logger)
+        
+        # Update the user params
+        user_params["sparse_skip_radi"] = sparse_skip_radi
+    else:
+        logger.info("Using user specified sparse skip")
+    
+    sparse_grid, num_points = build_path(img_shape, box_radi, sparse_skip_radi)
+
+    # Preallocate memory
+    range_waves = np.zeros((num_points, (2 * box_radi[0])))
+    row_waves = np.zeros((num_points, (2 * box_radi[1])))
+
+    logger.info(f"Computing the signal using {num_points} points")
+
+    for e in range(num_points):
+        subI = sub_image(img, box_radi, sparse_grid[e])
+        row_waves[e, :], range_waves[e, :] = subI.phase1(freq_filter_width)
+
+    # Compute the dominant frequency in the row and range direction
+    row_sig = np.mean(row_waves, 0)
+    range_sig = np.mean(range_waves, 0)
+
+    # Set frequencies to zero if they are in the frequency supression range
+    row_sig_remove = np.arange((len(row_sig) // 2 - frequency_supression[0]),(len(row_sig) // 2 + frequency_supression[0]),1)
+    range_sig_remove = np.arange((len(range_sig) // 2 - frequency_supression[1]),(len(range_sig) // 2 + frequency_supression[1]),1)
+
+    row_sig[row_sig_remove] = 0
+    range_sig[range_sig_remove] = 0
+
+    max_row_sig = np.argsort(row_sig)[::-1][:num_sig_returned]
+    max_range_sig = np.argsort(range_sig)[::-1][:num_sig_returned]
+
+    implied_row_spacing = []
+    implied_range_spacing = []
+    for e in range(num_sig_returned):
+        implied_row_spacing.append((len(row_sig) / abs(max_row_sig[e] - len(row_sig) // 2)) * gsd)
+        implied_range_spacing.append((len(range_sig) / abs(max_range_sig[e] - len(range_sig) // 2)) * gsd)
+
+    # Result in in cm convert to inch and feet
+    implied_row_spacing = np.round(np.mean(implied_row_spacing) * .393701, 1)
+    implied_range_spacing = np.round(np.mean(implied_range_spacing) * .0328084, 1)
+
+    logger.info(f"Implied Row Spacing: {implied_row_spacing} in")
+    logger.info(f"Implied Range Spacing: {implied_range_spacing} ft")
+    logger.info("Finished Processing Sparse Grid")
+
+    return max_row_sig, max_range_sig
+
 
 
 

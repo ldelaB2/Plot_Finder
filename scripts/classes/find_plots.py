@@ -1,11 +1,15 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import multiprocessing, os
+from multiprocessing import shared_memory
+import time
 
 from classes.sub_image import sub_image
 from classes.wave_pad import wavepad
 from functions.image_processing import build_path
 from functions.general import create_shapefile
+from functions.pre_processing import compute_signal, compute_skip
+
 
 
 class find_plots():
@@ -13,85 +17,97 @@ class find_plots():
         self.params = plot_finder_job_params
         self.loggers = loggers
         self.phase_one() # Create the sparse grid and find the dominant frequencies
-        self.phase_two() # Create the fine grid and find the wavepad
-        self.phase_three() # Find the plots
+
     
     def phase_one(self):
         # Phase one calcualte the optimal signal
-        # Pulling the params
-        row_sig_remove = self.params["row_sig_remove"]
-        sparse_skip_radi = 100
-        num_sig_returned = self.params["num_sig_returned"]
-        
-        # Creating the sparse grid
-        sparse_grid, num_points = build_path(self.params["img_ortho_shape"][:2], self.box_radi, sparse_skip_radi * 2 + 1)
-        
-        # Preallocate memory
-        range_waves = np.zeros((num_points, (2 * self.box_radi[0])))
-        row_waves = np.zeros((num_points, (2 * self.box_radi[1])))
+        logger = self.loggers.fft_processing
+        row_signal, range_signal = compute_signal(self.params, logger)
 
-        # Loop through sparse grid; returning the abs of Freq Wave
-        for e in range(num_points):
-            subI = sub_image(self.g_ortho, self.box_radi, sparse_grid[e])
-            row_waves[e, :], range_waves[e, :] = subI.phase1(self.freq_filter_width)
+        # Box size
+        box_radi = self.params["box_radi"]
+        # Create the phase 2 mask
+        row_mask = np.zeros((box_radi[1] * 2))
+        range_mask = np.zeros((box_radi[0] * 2))
 
-        # Finding dominant frequency in row (column) direction
-        row_sig = np.mean(row_waves, 0)
-        # Finding dominant frequency in range (row) direction
-        range_sig = np.mean(range_waves, 0)
+        row_mask[row_signal] = 1
+        range_mask[range_signal] = 1
 
-        if row_sig_remove is not None:
-            start = self.box_radi[1] - row_sig_remove
-            end = self.box_radi[1] + row_sig_remove
-            row_sig[start:end] = 0
-
-        # Creating the masks
-        self.row_mask = create_phase2_mask(row_sig, num_sig_returned)
-        self.range_mask = create_phase2_mask(range_sig, num_sig_returned)
-
-        print("Finished Processing Sparse Grid")
+        logger.info("Finished Phase 1")
+        self.phase_two(row_mask, range_mask)
     
-    def phase_two(self):
+    def phase_two(self, row_mask, range_mask):
         # Pulling the params
-        fine_skip_radi = self.pf_job.params["fine_grid_radi"]
-        num_cores = self.pf_job.params["num_cores"]
+        logger = self.loggers.fft_processing
+        fine_skip_radi = self.params["fine_skip_radi"]
+        fine_skip_num_images = self.params["fine_skip_num_images"]
+        num_cores = self.params["num_cores"]
+        img_size = self.params["img_ortho_shape"]
+        box_radi = self.params["box_radi"]
+        gray_ortho = self.params["gray_img"]
+        freq_filter_width = self.params["freq_filter_width"]
+
+        # Check fi fine skip radi is defined
+        if fine_skip_radi is None:
+            logger.info(f"Fine skip radi not defined calculating using {fine_skip_num_images} images")
+            fine_skip_radi = compute_skip(img_size[:2], box_radi, fine_skip_num_images, logger)
+            
+            # Update the params
+            self.params["fine_skip_radi"] = fine_skip_radi
+        else:
+            logger.info(f"Using fine skip radi of {fine_skip_radi}")
 
         # Build the fine grid
-        fine_grid, num_points = build_path(self.g_ortho.shape, self.box_radi, fine_skip_radi * 2 + 1)
+        fine_grid, num_points = build_path(img_size, box_radi, fine_skip_radi)
+
+        # Let the people know whats up
+        logger.info(f"Starting to process fine grid using {num_points} images and {num_cores} cores")
         
-        # Parallelize the computation of the wavepad
-        with multiprocessing.Pool(processes=num_cores) as pool:
-            rawwavepad = pool.map(
-                compute_phase2_fun,
-                [(self.freq_filter_width, self.row_mask, self.range_mask, fine_grid[e], self.g_ortho, self.box_radi, fine_skip_radi) for e in range(num_points)])
-
         # Preallocate memory
-        row_wavepad = np.ones_like(self.g_ortho).astype(np.float64)
-        range_wavepad = np.ones_like(self.g_ortho).astype(np.float64)
+        # Create shared memory for row_wavepad and range_wavepad
+        array_size = int(np.prod(gray_ortho.shape))
+        shm_row = shared_memory.SharedMemory(create=True, size=array_size)
+        shm_range = shared_memory.SharedMemory(create=True, size=array_size)
+        shm_gray = shared_memory.SharedMemory(create=True, size=array_size)
+        shared_gray_img = np.ndarray(gray_ortho.shape, dtype = np.uint8, buffer = shm_gray.buf)
+        np.copyto(shared_gray_img, gray_ortho)
 
-        # Loop through the rawwavepad and place the snips in the correct location
-        for e in range(len(rawwavepad)):
-            center = rawwavepad[e][2]
-            col_min = center[0] - fine_skip_radi
-            col_max = center[0] + fine_skip_radi + 1
-            row_min = center[1] - fine_skip_radi
-            row_max = center[1] + fine_skip_radi + 1
+        # Compute the expand radi
+        expand_radi = np.array(fine_skip_radi) // 2
+       
+        # Shared params
+        fine_grid_params = [row_mask,
+                            range_mask,
+                            freq_filter_width,
+                            box_radi,
+                            expand_radi,
+                            shm_row.name,
+                            shm_range.name,
+                            shm_gray.name,
+                            gray_ortho.shape]
+        
+        # Record the start time
+        start_time = time.time()
 
-            row_snp = np.tile(rawwavepad[e][0], (fine_skip_radi * 2 + 1, 1))
-            range_snp = np.tile(rawwavepad[e][1], (fine_skip_radi * 2 + 1, 1)).T
+        with multiprocessing.Pool(num_cores) as pool:
+            args = [(fine_grid_params, center) for center in fine_grid]
+            pool.map(phase_two_worker, args)
+            
+        # Pull the range and row wavepad out of shared memory
+        row_wavepad = np.ndarray(gray_ortho.shape, dtype=np.uint8, buffer=shm_row.buf)
+        range_wavepad = np.ndarray(gray_ortho.shape, dtype=np.uint8, buffer=shm_range.buf)
 
-            row_wavepad[row_min:row_max, col_min:col_max] = row_snp
-            range_wavepad[row_min:row_max, col_min:col_max] = range_snp
+        # Close the shared memory
+        shm_row.unlink()
+        shm_range.unlink()
+        shm_gray.unlink()
 
-        # Invert the wavepad
-        row_wavepad = 1 - row_wavepad
-        range_wavepad = 1 - range_wavepad
-        self.raw_row_wavepad = (row_wavepad * 255).astype(np.uint8)
-        self.raw_range_wavepad = (range_wavepad * 255).astype(np.uint8)
+        end_time = time.time()
+        logger.info(f"Finished processing fine grid in {np.round(end_time - start_time,2)} seconds")
 
-        print("Finished Processing Fine Grid")
+        self.phase_three(row_wavepad, range_wavepad)
     
-    def phase_three(self):
+    def phase_three(self, row_wavepad, range_wavepad):
         # Pass off to wavepad to find fft rectangles
         fft_placement = wavepad(self.raw_range_wavepad, self.raw_row_wavepad, self.pf_job.params, self.g_ortho)
         fft_rect_list = fft_placement.final_rect_list
@@ -105,19 +121,39 @@ class find_plots():
         print("Finished FFT Rectangle Placement")
 
 
-def create_phase2_mask(signal, num_sig_returned):
-        ssig = np.argsort(signal)[::-1]
-        freq_index = ssig[:num_sig_returned]
-        mask = np.zeros_like(signal)
-        mask[freq_index] = 1
+def phase_two_worker(args):
+    phase_two_params, center = args
+    row_mask, range_mask, freq_filter_width, box_radi, expand_radi, shm_row_name, shm_range_name, shm_gray_name, gray_ortho_shape = phase_two_params
     
-        return mask
+    # Get the shared memory addresses
+    row_shared_mem  = shared_memory.SharedMemory(name=shm_row_name)
+    range_shared_mem = shared_memory.SharedMemory(name=shm_range_name)
+    gray_shared_mem = shared_memory.SharedMemory(name=shm_gray_name)
+    
+    # Get the shared memory arrays
+    row_wavepad = np.ndarray(gray_ortho_shape, dtype=np.uint8, buffer=row_shared_mem.buf)
+    range_wavepad = np.ndarray(gray_ortho_shape, dtype=np.uint8, buffer=range_shared_mem.buf)
+    gray_ortho = np.ndarray(gray_ortho_shape, dtype=np.uint8, buffer=gray_shared_mem.buf)
 
-def compute_phase2_fun(args):
-    FreqFilterWidth, row_mask, range_mask, center, image, boxradius, expand_radi = args
-    subI = sub_image(image, boxradius, center)
-    row_snip = subI.phase2(FreqFilterWidth, 0, row_mask, expand_radi)
-    range_snip = subI.phase2(FreqFilterWidth, 1, range_mask, expand_radi)
+    # Run phase 2 of sub image
+    subI = sub_image(gray_ortho, box_radi, center)
+    row_wave = subI.phase2(freq_filter_width, 0, row_mask, expand_radi[1])
+    range_wave = subI.phase2(freq_filter_width, 1, range_mask, expand_radi[0])
 
-    return (row_snip, range_snip, center)
+    min_row = center[1] - expand_radi[0]
+    max_row = center[1] + expand_radi[0] + 1
 
+    min_col = center[0] - expand_radi[1]
+    max_col = center[0] + expand_radi[1] + 1
+
+    row_snp = np.tile(row_wave, (expand_radi[0] * 2 + 1, 1))
+    range_snp = np.tile(range_wave, (expand_radi[1] * 2 + 1, 1)).T
+
+    row_wavepad[min_row:max_row, min_col:max_col] = row_snp
+    range_wavepad[min_row:max_row, min_col:max_col] = range_snp
+
+    row_shared_mem.close()
+    range_shared_mem.close()
+    gray_shared_mem.close()
+   
+    return

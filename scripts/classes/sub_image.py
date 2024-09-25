@@ -189,7 +189,7 @@ class sub_image:
         Finally, it takes the real part of the converted wave and stores it in the SpacialWave attribute.
         """
         # Compute Spacial Wave
-        self.SpacialWave = bindvec(np.real(ifft(fftshift(self.FreqWave))))
+        self.SpacialWave = np.round(255 * bindvec(np.real(ifft(fftshift(self.FreqWave))))).astype(int)
 
 
     def plotSpacialWave(self):

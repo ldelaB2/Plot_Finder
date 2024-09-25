@@ -115,8 +115,8 @@ def build_path(img_shape, boxradius, skip):
     str2 = 1 + boxradius[1]
     stp2 = img_shape[1] - boxradius[1]
 
-    y = np.arange(str1, stp1, skip)
-    x = np.arange(str2, stp2, skip)
+    y = np.arange(str1, stp1, skip[0])
+    x = np.arange(str2, stp2, skip[1])
 
     X, Y = np.meshgrid(x, y)
     path = np.column_stack((X.ravel(), Y.ravel()))
