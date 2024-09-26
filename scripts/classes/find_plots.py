@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
-import multiprocessing, os
+import multiprocessing as mp
+import os
 from multiprocessing import shared_memory
 import time
 
@@ -9,6 +10,9 @@ from classes.wave_pad import wavepad
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
+from functions.wavepad import process_wavepad
+from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles
+from functions.rect_list import build_rect_list
 
 
 
@@ -89,7 +93,7 @@ class find_plots():
         # Record the start time
         start_time = time.time()
 
-        with multiprocessing.Pool(num_cores) as pool:
+        with mp.Pool(num_cores) as pool:
             args = [(fine_grid_params, center) for center in fine_grid]
             pool.map(phase_two_worker, args)
             
@@ -108,6 +112,36 @@ class find_plots():
         self.phase_three(row_wavepad, range_wavepad)
     
     def phase_three(self, row_wavepad, range_wavepad):
+        # pull the params
+        logger = self.loggers.wavepad_processing
+        num_cores = self.params["num_cores"]
+        poly_deg_range = self.params["poly_deg_range"]
+        poly_deg_row = self.params["poly_deg_row"]
+        min_obj_size_range = self.params["min_obj_size_range"]
+        min_obj_size_row = self.params["min_obj_size_row"]
+        closing_iterations = self.params["closing_iterations"]
+        img = self.params["img_ortho"]
+
+        # Process the wavepad
+        range_skel = process_wavepad(range_wavepad, poly_deg_range, "range", min_obj_size_range, closing_iterations, logger)
+        row_skel = process_wavepad(row_wavepad, poly_deg_row, "row", min_obj_size_row, closing_iterations, logger)
+
+        initial_rect_list, initial_range_cnt, initial_row_cnt, initial_width, initial_height = build_rect_list(range_skel, row_skel, img)
+
+        # Remote initial range and row
+        logger.info(f"Initial Range Count: {initial_range_cnt}")
+        logger.info(f"Initial Row Count: {initial_row_cnt}")
+
+        # Compute the initial model
+        logger.info("Computing the initial model")
+        
+
+        print()
+
+
+
+
+
         # Pass off to wavepad to find fft rectangles
         fft_placement = wavepad(self.raw_range_wavepad, self.raw_row_wavepad, self.pf_job.params, self.g_ortho)
         fft_rect_list = fft_placement.final_rect_list

@@ -60,6 +60,8 @@ def flatten_mask_overlay(image, mask, alpha = 0.5):
     img_copy = Image.fromarray(img_copy)
     return(img_copy)
 
+
+
 def dialate_skel(skel):
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
     dialated_skel = cv.dilate(skel, kernel)

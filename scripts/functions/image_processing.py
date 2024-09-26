@@ -124,11 +124,12 @@ def build_path(img_shape, boxradius, skip):
     
     return path, num_points
 
-def find_correct_sized_obj(img):
+def find_correct_sized_obj(img, min_size):
     #Finding image object stats
     _, labeled_img, stats, _ = cv.connectedComponentsWithStats(img)
     object_areas = stats[:,4]
     object_areas = object_areas[1:]
+    object_areas = object_areas[object_areas > min_size]
     normalized_areas = np.zeros((object_areas.size, object_areas.size))
     for e in range(object_areas.size):
         for k in range(e):
@@ -151,7 +152,7 @@ def find_correct_sized_obj(img):
     mask = np.isin(labeled_img, correct_indx)
     filtered_img = np.where(mask, 1,0).astype(np.uint8)
 
-    return filtered_img
+    return filtered_img, mu
 
 def four_2_five_rect(points):
     top_left, top_right, bottom_left, bottom_right = points

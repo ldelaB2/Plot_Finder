@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 from scipy.optimize import dual_annealing
 from scipy.stats import poisson
+from matplotlib import pyplot as plt
 
 from functions.general import find_consecutive_in_range
 from functions.image_processing import find_correct_sized_obj
@@ -35,7 +36,6 @@ def hist_filter_wavepad(wavepad):
     results = dual_annealing(objective_function, bounds, args=(bin_left_edge, pixels_hist), maxiter = 1000)
     opt_params = results.x
 
-    #prob_dist = model_function(bin_left_edge, *opt_params)
     # Compute the probability of each point
     point_left_prob, point_right_prob = calc_prob(pixels, *opt_params)
     binary_wavepad = np.where(point_left_prob >= point_right_prob, 0, 1)
@@ -45,29 +45,28 @@ def hist_filter_wavepad(wavepad):
 
     return binary_wavepad
 
-def filter_wavepad(wavepad, method = "otsu"):
+def filter_wavepad(wavepad, logger, method = "otsu"):
     if method == "otsu":
         _, binary_wavepad = cv.threshold(wavepad, 0, 1, cv.THRESH_OTSU)
+        logger.info("Otsu Thresholding Complete")
 
     elif method == "hist":
         binary_wavepad = hist_filter_wavepad(wavepad).astype(np.uint8)
+        logger.info("Histogram Thresholding Complete")
         
     else:
-        print("Invalid filtering method")
+        logger.error("Invalid Wavepad Filtering Method")
         exit()
-
-    kernel = np.ones((5,5), np.uint8)
-    binary_wavepad = cv.erode(binary_wavepad, kernel, iterations = 3)
 
     return binary_wavepad
 
-def trim_boarder(img, direction):
+def trim_boarder(img, direction, logger):
     if direction == "range":
         direction = 0
     elif direction == "row":
         direction = 1
     else:
-        print("Invalid direction")
+        logger.error("Invalid Trim Boarder Direction")
         exit()
 
     t_sum = np.sum(img, axis = direction)
@@ -77,6 +76,8 @@ def trim_boarder(img, direction):
     min_index = find_consecutive_in_range(t_sum, lower_bound, upper_bound, 15)
     max_index = find_consecutive_in_range(t_sum[::-1], lower_bound, upper_bound, 15)
     max_index = t_sum.size - max_index
+
+    logger.info(f"Trimming Boarder: {min_index} to {max_index} in {direction} direction")
     
     if direction == 0:
         img[:, :(min_index + 1)] = 0
@@ -87,13 +88,13 @@ def trim_boarder(img, direction):
     
     return img
 
-def find_center_line(img, poly_degree, direction):
+def find_center_line(img, poly_degree, direction, logger):
     if direction == "range":
         direction = 1
     elif direction == "row":
         direction = 0
     else:
-        print("Invalid direction")
+        logger.error("Invalid direction for find_center_line")
         exit()
 
     num_obj, labeled_img, _, _ = cv.connectedComponentsWithStats(img)
@@ -120,13 +121,13 @@ def find_center_line(img, poly_degree, direction):
 
     return skel
 
-def impute_skel(skel, direction):
+def impute_skel(skel, direction, logger):
     if direction == "range":
         direction = 0
     elif direction == "row":
         direction = 1
     else:
-        print("Invalid direction")
+        logger.error("Invalid direction for impute_skel")
         exit()
 
     if direction == 1:
@@ -139,18 +140,20 @@ def impute_skel(skel, direction):
 
     center_distance = np.array([])
     for e in range(1, num_obj - 1):
-        distance = abs(centroids[e, direction] - centroids[e + 1, direction]).astype(int)
+        distance = abs(centroids[e, 1] - centroids[e + 1, 1]).astype(int)
         center_distance = np.append(center_distance, distance)
 
     median_dist = np.median(center_distance)
-    avg_dist = (median_dist * 1.25).astype(int)
+    avg_dist = (median_dist * 1.15).astype(int)
 
     obj_to_impute = np.where(center_distance > avg_dist)[0]
-    impute_dist = (center_distance[obj_to_impute] / median_dist).astype(int)
+    impute_dist = np.round((center_distance[obj_to_impute] / median_dist)).astype(int)
 
     if obj_to_impute.size == 0:
-        print("No objects to impute")
+        logger.info("No Objects to Impute")
     else:
+        logger.info(f"Imputing {obj_to_impute.size} Objects")
+
         indx = np.where(skel != 0)
         skel[indx] = labeled_img[indx]
 
@@ -164,7 +167,7 @@ def impute_skel(skel, direction):
             step_size = ((bottom_side[:, 0] - top_side[:, 0]) / impute_dist[e]).astype(int)
 
             for k in range(impute_dist[e] - 1):
-                new_obj = top_side
+                new_obj = np.copy(top_side)
                 new_obj[:, 0] = top_side[:, 0] + step_size * (k + 1)
                 skel[new_obj[:, 0], new_obj[:, 1]] = 100
 
@@ -176,22 +179,33 @@ def impute_skel(skel, direction):
 
     return skel
 
-def process_wavepad(args):
-    wavepad, filter_method, poly_degree, direction = args
-
+def process_wavepad( wavepad, poly_degree, direction, min_obj_size, closing_iterations, logger):
     # Filter the wavepad
-    filtered_wavepad = filter_wavepad(wavepad, filter_method)
+    filtered_wavepad = filter_wavepad(wavepad, logger)
 
     # Trim the boarder
-    trimmed_wavepad = trim_boarder(filtered_wavepad, direction)
+    trimmed_wavepad = trim_boarder(filtered_wavepad, direction, logger)
+
+    # Close the wavepad
+    if direction == "range":
+        logger.info(f"Closing Wavepad with {closing_iterations} iterations")
+        kernel = np.ones((5,5), np.uint8)
+        closed_wavepad = cv.morphologyEx(trimmed_wavepad, cv.MORPH_CLOSE, kernel, iterations = closing_iterations)
+    else:
+        logger.info(f"Erroding Wavepad with {closing_iterations} iterations")
+        kernel = np.ones((3,3), np.uint8)
+        closed_wavepad = cv.morphologyEx(trimmed_wavepad, cv.MORPH_ERODE, kernel, iterations = closing_iterations)
+        closed_wavepad = cv.morphologyEx(closed_wavepad, cv.MORPH_CLOSE, kernel, iterations = closing_iterations)
 
     # Find correct sized objects
-    correct_sized_wavepad = find_correct_sized_obj(trimmed_wavepad)
+    logger.info(f"Finding Correct Sized Objects with min size: {min_obj_size}")
+    correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(closed_wavepad, min_obj_size)
+    logger.info(f"Average Object Area: {avg_obj_area} for {direction} wavepad")
 
     # Find the center line
-    center_line = find_center_line(correct_sized_wavepad, poly_degree, direction)
+    center_line = find_center_line(correct_sized_wavepad, poly_degree, direction, logger)
 
     # Impute the skeleton
-    imputed_skel = impute_skel(center_line, direction)
+    imputed_skel = impute_skel(center_line, direction, logger)
 
     return imputed_skel

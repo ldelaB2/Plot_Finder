@@ -38,15 +38,17 @@
     "sparse_skip_radi": null,
     "sparse_skip_num_images": 1000,
     "frequency_supression": [0,0],
-
     "fine_skip_radi": null,
     "fine_skip_num_images": 50000,
-
     "freq_filter_width": 2,
     "num_sig_returned": 2,
- 
+    
+    "_comment": "Wavepad Processing Parameters",
     "poly_deg_range": 3,
     "poly_deg_row": 1,
+    "min_obj_size_range": 10000,
+    "min_obj_size_row": 5000,
+    "closing_iterations": 5,
 
     "_comment": "Optimization parameters",
     "save_optimization_model": false,

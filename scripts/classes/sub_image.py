@@ -75,6 +75,9 @@ class sub_image:
         
         tindex = 1 - self.axis
         pixelval = self.SpacialWave[(self.boxradius[tindex] - expand_radi):(self.boxradius[tindex] + expand_radi + 1)]
+        
+        # Invert because the signal is currently on the plants and we want the background
+        pixelval = 255 - pixelval
 
         return pixelval
 

@@ -1,16 +1,9 @@
 import numpy as np
 import cv2 as cv
-from tqdm import tqdm
 
 from classes.rectangles import rectangle
-from classes.model import model
 from functions.image_processing import four_2_five_rect
-from functions.display import dialate_skel, disp_quadratic_optimization
-from functions.optimization import compute_model
-from functions.display import disp_rectangles
-from matplotlib import pyplot as plt
-from functions.distance_optimize import bfs_distance
-import copy
+from functions.display import dialate_skel
 
 def build_rect_list(range_skel, row_skel, img):
         rect_list, num_ranges, num_rows = build_rectangles(range_skel, row_skel)
@@ -65,36 +58,6 @@ def build_rectangles(range_skel, col_skel):
     num_rows = num_rows - 2
 
     return rect, num_ranges, num_rows
-
-def sparse_optimize(rect_list, model, opt_param_dict):
-    print("Starting Sparse Optimization")
-    flag = False
-    while not flag:
-        results = bfs_distance(copy.copy(rect_list), opt_param_dict, model, start_point= None)
-        flag = results[0]
-        if not flag:
-            print("No Solution Found increasing radius")
-            opt_param_dict['valid_radi'] += 1
-        else:
-            print("Found Valid Solution")
-
-    print(f"Final Score {results[1]}")
-
-    return results[2]
-
-
-def final_optimize(rect_list, opt_param_dict, initial_model):
-    # Pre Process the rectangles
-    
-    model = initial_model
-    results = bfs_distance(copy.copy(rect_list), opt_param_dict, model, start_point = None)
-
-
-    print("Finished Final Optimization")
-        
-    return
-
-
 
 
 def set_range_row(rect_list):

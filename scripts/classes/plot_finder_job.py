@@ -2,6 +2,7 @@ from classes.find_plots import find_plots
 from classes.optimize_plots import optimize_plots
 from classes.params import pf_params
 from classes.logger import pf_logger
+import time
 
 class plot_finder_job:
     def __init__(self, default_param_path, user_param_path, logger_path):
@@ -13,12 +14,24 @@ class plot_finder_job:
         #self.print_plot_finder_logo(intro = True)
 
         if self.params.user_params["find_plots"] == True:
+            find_plots_start_time = time.time()
+
             # Finding the plots
             find_plots(self.params.user_params, self.loggers)
 
+            # End time
+            end_time = time.time()
+            self.loggers.find_plots.info(f"Total time for finding plots: {end_time - find_plots_start_time}")
+
         if self.params.user_params["optimize_plots"] == True:
+            optimizing_start_time = time.time()
+
             # Optimizing the plots
             optimize_plots(self.params.user_params, self.loggers)
+
+            # End time
+            end_time = time.time()
+            self.loggers.optimize_plots.info(f"Total time for optimizing plots: {end_time - optimizing_start_time}")
 
         #self.print_plot_finder_logo(intro = False)
 
@@ -84,5 +97,4 @@ class plot_finder_job:
             
             print(f"""Finished Processing Image: {self.params['img_name']}
             Thanks for using PLot Finder! Keep on Keeping on - Squid Billy Willy""")
-
-                                                              
+                                                           

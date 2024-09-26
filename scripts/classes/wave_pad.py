@@ -1,15 +1,3 @@
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib import pyplot as plt
-import multiprocessing as mp
-import numpy as np
-from classes.model import model
-
-from functions.display import disp_rectangles
-from functions.optimization import compute_model
-from functions.wavepad import process_wavepad
-from functions.rect_list import build_rect_list, sparse_optimize, final_optimize, set_range_row, set_id
-from functions.rect_list_processing import remove_rectangles, add_rectangles, double_check
 
 class wavepad:
     def __init__(self, range_wavepad, row_wavepad, params, img):
@@ -18,27 +6,11 @@ class wavepad:
         self.row_wavepad = row_wavepad
         self.img = img
 
-        self.phase_one() # Processing the wavepads into skels
+        
         self.phase_two() # Building the initial rectangles and removing extra ranges/rows
         self.phase_three() # Finding the all ranges and rows
         self.phase_four() # Final Optimization and adding labels
 
-    def phase_one(self):
-        #Pull the params
-        ncores = self.params["num_cores"]
-        filter_method = self.params["wavepad_filter_method"]
-        poly_deg_range = self.params["poly_deg_range"]
-        poly_deg_row = self.params["poly_deg_row"]
-
-        if ncores > 1:
-            with mp.Pool( processes = 2) as pool:
-                results = pool.map(process_wavepad, [[self.range_wavepad, filter_method, poly_deg_range, "range"], [self.row_wavepad, filter_method, poly_deg_row, "row"]])
-            self.range_skel, self.row_skel = results
-        else:
-            self.range_skel = process_wavepad([self.range_wavepad, filter_method, poly_deg_range, "range"])
-            self.row_skel = process_wavepad([self.row_wavepad, filter_method,poly_deg_row, "row"])
-
-        print("Finished Processing Wavepads")
 
     def phase_two(self):
         # Pull the params
@@ -112,28 +84,5 @@ class wavepad:
         final_optimize(self.final_rect_list, self.opt_param_dict, self.initial_model)
 
 
-    def create_opt_param_dict(self, phase):
-        opt_param_dict = {}
-        opt_param_dict['optimization_loss'] = "L1"
-        opt_param_dict['neighbor_radi'] = 2
-        opt_param_dict['ncore'] = self.params["num_cores"]
-        opt_param_dict['model_shape'] = self.model_shape
-
-        if phase == "sparse":
-            opt_param_dict['x_radi'] = 20
-            opt_param_dict['y_radi'] = 50
-            opt_param_dict['num_models'] = 100
-
-        elif phase == "fine":
-            opt_param_dict['max_epoch'] = 5
-            opt_param_dict['valid_radi'] = 60
-            opt_param_dict['x_radi'] = 30
-            opt_param_dict['y_radi'] = 100
-            opt_param_dict['theta_radi'] = 5
-            opt_param_dict['width_shrink'] = 20
-            opt_param_dict['height_shrink'] = 80
-            opt_param_dict['model_shape'] = self.model_shape
-
-        self.opt_param_dict = opt_param_dict
 
         return
