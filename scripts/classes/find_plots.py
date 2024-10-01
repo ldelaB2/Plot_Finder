@@ -7,12 +7,16 @@ import time
 
 from classes.sub_image import sub_image
 from classes.wave_pad import wavepad
+from classes.model import model, compute_template_image
+
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
 from functions.wavepad import process_wavepad
 from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles
-from functions.rect_list import build_rect_list
+from functions.rect_list import build_rect_list, set_range_row, set_id
+from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check, setup_rect_list
+
 
 
 
@@ -114,13 +118,12 @@ class find_plots():
     def phase_three(self, row_wavepad, range_wavepad):
         # pull the params
         logger = self.loggers.wavepad_processing
-        num_cores = self.params["num_cores"]
         poly_deg_range = self.params["poly_deg_range"]
         poly_deg_row = self.params["poly_deg_row"]
         min_obj_size_range = self.params["min_obj_size_range"]
         min_obj_size_row = self.params["min_obj_size_row"]
         closing_iterations = self.params["closing_iterations"]
-        img = self.params["img_ortho"]
+        img = self.params["gray_img"]
 
         # Process the wavepad
         range_skel = process_wavepad(range_wavepad, poly_deg_range, "range", min_obj_size_range, closing_iterations, logger)
@@ -133,19 +136,93 @@ class find_plots():
         logger.info(f"Initial Row Count: {initial_row_cnt}")
 
         # Compute the initial model
-        logger.info("Computing the initial model")
+        model_size = (initial_height, initial_width)
+        initial_model = model(model_size).compute_initial_model(initial_rect_list, logger)
+
+        user_models = {}
+        user_models["initial_model"] = initial_model
+
+        # Update the params
+        self.params["fft_range_cnt"] = initial_range_cnt
+        self.params["fft_row_cnt"] = initial_row_cnt
+        self.params["models"] = user_models
+        self.params["model_size"] = model_size
+
+        # Phase 4
+        self.phase_four(initial_rect_list)
         
+    def phase_four(self, initial_rect_list):
+        # Pull the params
+        logger = self.loggers.find_plots
+        num_ranges = self.params["number_ranges"]
+        num_rows = self.params["number_rows"]
+        fft_ranges = self.params["fft_range_cnt"]
+        fft_rows = self.params["fft_row_cnt"]
+        initial_model = self.params["models"]["initial_model"]
+        model_shape = self.params["model_size"]
+        x_radi = np.round(self.params["x_radi"] * model_shape[1]).astype(int)
+        y_radi = np.round(self.params["y_radi"] * model_shape[0]).astype(int)
 
-        print()
-
-
-
-
-
-        # Pass off to wavepad to find fft rectangles
-        fft_placement = wavepad(self.raw_range_wavepad, self.raw_row_wavepad, self.pf_job.params, self.g_ortho)
-        fft_rect_list = fft_placement.final_rect_list
+        # Create the template img 
+        template_image = compute_template_image(initial_model, self.params["gray_img"])
         
+        # Setup the rect list
+        setup_rect_list(initial_rect_list, x_radi, y_radi, template_image, model_shape)
+
+        # Compute the number of ranges and rows to add or remove
+        delta_ranges = num_ranges - fft_ranges
+        delta_rows = num_rows - fft_rows
+
+        # Ranges
+        if delta_ranges > 0:
+            logger.info(f"Adding {delta_ranges} missing ranges")
+            initial_rect_list = add_rectangles(initial_rect_list, "range", delta_ranges, logger)
+        elif delta_ranges < 0:
+            logger.info(f"Removing {abs(delta_ranges)} extra ranges")
+            initial_rect_list = remove_rectangles(initial_rect_list, "range", abs(delta_ranges), logger)
+        
+        logger.info("Double checking ranges")
+        initial_rect_list = double_check(initial_rect_list, "range", logger)
+
+        # Rows
+        if delta_rows > 0:
+            logger.info(f"Adding {delta_rows} missing rows")
+            initial_rect_list = add_rectangles(initial_rect_list, "row", delta_rows, logger)
+        elif delta_rows < 0:
+            logger.info(f"Removing {abs(delta_rows)} extra rows")
+            initial_rect_list = remove_rectangles(initial_rect_list, "row", abs(delta_rows), logger)
+        
+        logger.info("Double checking rows")
+        initial_rect_list = double_check(initial_rect_list, "row", logger)
+
+        logger.info("Finished finding all ranges and rows")
+
+        self.phase_five(initial_rect_list)
+
+    def phase_five(self, initial_rect_list):
+        # Pulling the params
+        logger = self.loggers.find_plots
+        label_start = self.params["label_start"]
+        label_flow = self.params["label_flow"]
+        output_dir = self.params["pf_output_directorys"]
+        shp_directory = output_dir["shapefiles"]
+        img_name = self.params["image_name"]
+        neighbor_radi = self.params["neighbor_radi"]
+        distance_weight = 1
+
+        # Setting the range and row
+        set_range_row(initial_rect_list)
+        set_id(initial_rect_list, start = label_start, flow = label_flow)
+
+        # Distance Optimize
+        final_rect_list = distance_optimize(initial_rect_list, neighbor_radi, distance_weight, logger)
+
+        
+        # Setting the id
+        
+        print("Finished Adding Labels")
+
+        # Create the shapefile
         shp_path = os.path.join(self.pf_job.output_paths['shape_dir'], f"{self.pf_job.params['img_name']}_fft.gpkg")
         create_shapefile(fft_rect_list, self.pf_job.meta_data, self.inverse_rotation, shp_path)
 

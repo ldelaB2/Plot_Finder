@@ -3,14 +3,9 @@ import cv2 as cv
 from PIL import Image
 import matplotlib
 matplotlib.use('Qt5Agg')
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.pipeline import make_pipeline
 
 from matplotlib import pyplot as plt
-from matplotlib.animation import FuncAnimation
-from functions.optimization import compute_score
+
 from functions.general import bindvec
 
 def flatten_mask_overlay(image, mask, alpha = 0.5):
@@ -62,8 +57,8 @@ def flatten_mask_overlay(image, mask, alpha = 0.5):
 
 
 
-def dialate_skel(skel):
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (20, 20))
+def dialate_skel(skel, kernel_size = 20):
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (kernel_size, kernel_size))
     dialated_skel = cv.dilate(skel, kernel)
 
     return dialated_skel
@@ -120,56 +115,5 @@ def disp_distance_change(expected_centers, geometric_mean, current_center):
     plt.legend()
     plt.show()
 
-def disp_quadratic_optimization(rect, param_dict, model):
-    loss = param_dict['optimization_loss']
-    test_points = param_dict['test_points']
-    x_radi = param_dict['x_radi']
-    y_radi = param_dict['y_radi']
-    theta_radi = param_dict['theta_radi']
-
-    # Coompute the current objective function
-    current_img = rect.create_sub_image()
-    current_img = bindvec(current_img)
-    current_score = compute_score(current_img, model, method = loss)
-    
-    # Compute the objective function
-    obj_val = []
-    for point in test_points:
-        new_img = rect.move_rectangle(point[0], point[1], point[2])
-        new_img = bindvec(new_img)
-        tmp_score = compute_score(new_img, model, method = loss)
-        obj_val.append(tmp_score)
-
-    test_points = np.array(test_points)
-    
-    # Create the model
-    pred_model = make_pipeline(PolynomialFeatures(degree = 2), RandomForestRegressor())
-    pred_model.fit(test_points, obj_val)
-    
-    # Create the meshgrid
-    x_disp = np.arange(-x_radi, x_radi, 2)
-    y_disp = np.arange(-y_radi, y_radi, 2)
-    t_disp = np.arange(-theta_radi, theta_radi, 1)
-    X, Y, T = np.meshgrid(x_disp, y_disp, t_disp)
-    disp_points = np.column_stack((X.ravel(), Y.ravel(), T.ravel()))
-    disp_obj = pred_model.predict(disp_points)
-
-    disp_true = []
-    for point in disp_points:
-        new_img = rect.move_rectangle(point[0], point[1], point[2])
-        new_img = bindvec(new_img)
-        tmp_score = compute_score(new_img, model, method = loss)
-        disp_true.append(tmp_score)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection = '3d')
-    ax.scatter(disp_points[:,0], disp_points[:,1], disp_true, c = 'r', label = 'True Values')
-    ax.scatter(disp_points[:,0], disp_points[:,1], disp_obj, c = 'b', label = 'Predicted Values')
-    ax.scatter(test_points[:,0], test_points[:,1], obj_val, c = 'g', label = 'Training Points')
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Objective Function')
-    plt.legend()
-    plt.show()
 
     

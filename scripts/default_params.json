@@ -52,6 +52,9 @@
 
     "_comment": "Optimization parameters",
     "save_optimization_model": false,
+    "x_radi": 0.25,
+    "y_radi": 0.15,
+    "neighbor_radi": 2,
 
     "_commment": "Internal Parameters (Do not change)",
     "meta_data": null,

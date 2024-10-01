@@ -1,9 +1,23 @@
 import numpy as np
 import copy
 
-from functions.optimization import compute_score_list
-from functions.distance_optimize import bfs_add_rect
+from functions.optimization import optimize_rect_list_xy
+from functions.display import disp_rectangles
+from matplotlib import pyplot as plt
+from functions.general import geometric_median
+from functions.rect_list import compute_spiral_path
 
+
+def setup_rect_list(rect_list, dx, dy, template_img, model_shape):
+    for rect in rect_list:
+        rect.template_img = template_img
+        rect.x_radi = dx
+        rect.y_radi = dy
+        rect.model_shape = model_shape
+
+    _ = optimize_rect_list_xy(rect_list)
+
+    return 
 
 def find_next_rect(rect_list, direction, edge = False):
     if direction == 'row':
@@ -82,8 +96,7 @@ def check_within_img(min_list, max_list):
 
     return min_flag, max_flag
 
-def compare_next_to_current(rect_list, model, direction, opt_param_dict):
-    score_method = "NCC"
+def compare_next_to_current(rect_list, direction, logger):
     # Find current edge
     current_min, current_max = find_next_rect(rect_list, direction, edge = True)
     # Find next set
@@ -91,31 +104,33 @@ def compare_next_to_current(rect_list, model, direction, opt_param_dict):
 
     # Check if the mean center is within the image for the next then optimize and compute the score
     next_min_flag, next_max_flag = check_within_img(next_min, next_max)
+
     if next_min_flag:
-        next_min_score = compute_score_list(next_min, model, method = score_method)
+        next_min_score = optimize_rect_list_xy(next_min)
     else:
-        next_min_score = -np.inf
+        next_min_score = np.inf
+        logger.info(f"Next Min {direction} is out of bounds")
 
     if next_max_flag:
-        next_max_score = compute_score_list(next_max, model, method = score_method)
+        next_max_score = optimize_rect_list_xy(next_max)
     else:
-        next_max_score = -np.inf
+        next_max_score = np.inf
+        logger.info(f"Next Max {direction} is out of bounds")
 
     # Compute the current scores
-    current_min_score = compute_score_list(current_min, model, method = score_method)
-    current_max_score = compute_score_list(current_max, model, method = score_method)
+    current_min_score = np.mean([rect.score for rect in current_min])
+    current_max_score = np.mean([rect.score for rect in current_max])
 
     # Compare the next min to current max
-    if next_min_score > current_max_score:
+    if next_min_score < current_max_score:
         drop_list = current_max
-        add_list, _ = bfs_add_rect(next_min, rect_list, model, opt_param_dict)
         add_list = next_min
         update_flag = True
 
     # Compare next max to current min
-    elif next_max_score > current_min_score:
+    elif next_max_score < current_min_score:
         drop_list = current_min
-        add_list, _ = bfs_add_rect(next_max, rect_list, model, opt_param_dict)
+        add_list = next_max
         update_flag = True
 
     else:
@@ -125,38 +140,25 @@ def compare_next_to_current(rect_list, model, direction, opt_param_dict):
 
     return update_flag, add_list, drop_list
 
-def remove_rectangles(rect_list, direction, num_2_remove, model):
+def remove_rectangles(rect_list, direction, num_2_remove, logger):
     for _ in range(num_2_remove):
         # Find the current min, max rectangles
         min_list, max_list = find_next_rect(rect_list, direction, edge = True)
 
         # Computing the scores
-        min_score = compute_score_list(min_list, model, method = "L1")
-        max_score = compute_score_list(max_list, model, method = "L1")
+        min_score = np.mean([rect.score for rect in min_list])
+        max_score = np.mean([rect.score for rect in max_list])
 
         if min_score <= max_score:
+            logger.info(f"Removing Max {direction}")
             rect_list = remove_rectangles_from_list(rect_list, max_list)
-            print(f"Removed Max {direction}")
         else:
+            logger.info(f"Removing Min {direction}")
             rect_list = remove_rectangles_from_list(rect_list, min_list)
-            print(f"Removed Min {direction}")
 
     return rect_list
 
-def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
-    # Initialize the last min and max lists
-    last_min_list = None
-    last_min_score = None
-
-    last_max_list = None
-    last_max_score = None
-
-    min_stop = False
-    max_stop = False
-
-    min_score = -np.inf
-    max_score = -np.inf
-
+def add_rectangles(rect_list, direction, num_2_add, logger):
     for cnt in range(num_2_add):
         # Find the next rectangles
         min_list, max_list = find_next_rect(rect_list, direction, edge = False)
@@ -164,62 +166,42 @@ def add_rectangles(rect_list, direction, num_2_add, model, opt_param_dict):
         # Check to make sure the rectangles are within the image
         min_flag, max_flag = check_within_img(min_list, max_list)
 
-        if min_flag and not min_stop:
-            if max_score == 0:
-                min_list = last_min_list
-                min_score = last_min_score
-                print(f"Using Last Min {direction} with score {min_score}")
-            else:
-                # Optimize the rectangles
-                min_list, min_score = bfs_add_rect(min_list, rect_list, model, opt_param_dict)
+        if min_flag:
+            # Optimize the rectangles
+            min_score = optimize_rect_list_xy(min_list)
                 
-                if min_score == 0:
-                    min_stop = True
-                last_min_list = min_list
-                last_min_score = min_score
         else:
-            min_score = -np.inf
-            print("Min Rectangles are out of bounds")
+            min_score = np.inf
+            logger.info("Min Rectangles are out of bounds")
 
-        if max_flag and not max_stop:
-            if min_score == 0:
-                max_list = last_max_list
-                max_score = last_max_score
-                print(f"Using Last Max {direction} with score {max_score}")
-            else:
-                # Optimize the rectangles
-                max_list, max_score = bfs_add_rect(max_list, rect_list, model, opt_param_dict)
-
-                if max_score == 0:
-                    max_stop = True
-                last_max_list = max_list
-                last_max_score = max_score
+        if max_flag:
+            max_score = optimize_rect_list_xy(max_list)
         else:
-            max_score = -np.inf
-            print("Max Rectangles are out of bounds")
+            max_score = np.inf
+            logger.info("Max Rectangles are out of bounds")
 
 
         # Adding the rectangles with min score
-        if min_score < max_score:
-            print(f"Adding Max {direction}")
+        if min_score > max_score:
+            logger.info(f"Adding Max {direction}")
             for rect in max_list:
                 rect_list.append(rect)
         else:
-            print(f"Adding Min {direction}")
+            logger.info(f"Adding Min {direction}")
             for rect in min_list:
                 rect_list.append(rect)
 
-    print(f"Finished adding {num_2_add} {direction}(s)")
+    logger.info(f"Finished Adding {num_2_add} {direction}(s)")
 
     return rect_list
 
-def double_check(rect_list, direction, model, opt_param_dict):
+def double_check(rect_list, direction, logger):
     # Checking to make sure we found the correct ranges and rows
     flag = True
     update_cnt = 0
 
     while flag:
-        update_flag, next_best_list, current_best_list = compare_next_to_current(rect_list, model, direction, opt_param_dict)
+        update_flag, next_best_list, current_best_list = compare_next_to_current(rect_list, direction, logger)
         if update_flag:
             # Remove the current best list and add the next best list
             rect_list = remove_rectangles_from_list(rect_list, current_best_list)
@@ -230,6 +212,117 @@ def double_check(rect_list, direction, model, opt_param_dict):
         else:
             flag = False
     
-    print(f"Shifted {update_cnt} {direction}(s)")
+    logger.info(f"Shifted {update_cnt} {direction}(s)")
 
     return rect_list
+
+def compute_neighbors(rect_list, neighbor_radi):
+    # Find min and max
+    ranges = np.array([rect.range for rect in rect_list])
+    rows = np.array([rect.row for rect in rect_list])
+
+    max_range = np.max(ranges)
+    min_range = np.min(ranges)
+    max_row = np.max(rows)
+    min_row = np.min(rows)
+    for rect in rect_list:
+        # Find self range and row
+        rng = rect.range
+        row = rect.row
+
+        # Find the neighbors
+        rng_neighbors = np.arange(rng - neighbor_radi, rng + neighbor_radi + 1)
+        row_neighbors = np.arange(row - neighbor_radi, row + neighbor_radi + 1)
+
+        # Clip the neighbors to valid values
+        rng_neighbors = np.unique(np.clip(rng_neighbors, min_range, max_range))
+        row_neighbors = np.unique(np.clip(row_neighbors, min_row, max_row))
+
+        # Create the neighbor list
+        x, y = np.meshgrid(rng_neighbors, row_neighbors)
+        tmp_neighbors = np.column_stack((x.ravel(), y.ravel()))
+        
+        # Remove self from neighbors
+        self_indx = np.where((tmp_neighbors[:,0] == rng) & (tmp_neighbors[:,1] == row))[0]
+        tmp_neighbors = np.delete(tmp_neighbors, self_indx, axis = 0)
+        tmp_neighbors = [tuple(nbr) for nbr in tmp_neighbors]
+        rect.neighbors = tmp_neighbors
+
+    return
+
+
+def distance_optimize(rect_list, neighbor_radi, kappa, logger):
+    logger.info("Starting Distance Optimization")
+
+    #Compute the spiral path
+    spiral_path = compute_spiral_path(rect_list)
+    logger.info(f"Start Point: {spiral_path[0]}")
+
+    # Compute the neighbors
+    compute_neighbors(rect_list, neighbor_radi)
+
+    # Set up the rect dictionary
+    rect_dict = {(rect.range, rect.row): rect for rect in rect_list}
+
+    neighbor_expected_centers = {}
+    distance_from_geometric_mean = []
+
+    # Compute the geometric median for myself
+    for point in spiral_path:
+        # Myself
+        me = (point[0], point[1])
+        rect = rect_dict[me]
+        # My neighbors
+        my_neighbors = rect.neighbors
+
+        # Save the output
+        expected_centers = []
+        for neighbor in my_neighbors:
+            # Neighbor
+            neighbor_rect = rect_dict[neighbor]
+            # Where my neighbor thinks I should be
+            expected_centers.append(neighbor_rect.compute_neighbor_position(me))
+            
+        # Compute the geometric median
+        geometric_mean = np.round(geometric_median(expected_centers)).astype(int)
+
+        # Add to the dict
+        neighbor_expected_centers[me] = geometric_mean
+
+        my_distance = np.linalg.norm(np.array([rect.center_x, rect.center_y]) - geometric_mean)
+        distance_from_geometric_mean.append(my_distance)
+
+    # Create the sigmoid for scaling the weight of the distance in placement
+    x0 = np.min(distance_from_geometric_mean)
+    y0 = np.max(distance_from_geometric_mean)
+    k = kappa
+    
+    logger.info(f"Min Distance | Max Distance | K from Geometric Mean Sigmoid: {np.round(x0)} | {np.round(y0)} | {k}")
+    
+    # Compute the sigmoid values
+    f_values = (1 - np.exp(-k * (distance_from_geometric_mean - x0))) / (1 - np.exp(-k * (y0 - x0)))
+
+    # Update the rect centers
+    for indx, point in enumerate(spiral_path):
+        me = (point[0], point[1])
+        rect = rect_dict[me]
+        current_center = np.array([rect.center_x, rect.center_y])
+        expected_center = neighbor_expected_centers[me]
+
+        delta_center = expected_center - current_center
+        weighted_delta = delta_center * f_values[indx]
+        weighted_delta = np.round(weighted_delta).astype(int)
+
+        rect.center_x += weighted_delta[0]
+        rect.center_y += weighted_delta[1]
+
+    logger.info("Finished Distance Optimization")
+
+    return rect_list
+
+
+
+
+
+
+

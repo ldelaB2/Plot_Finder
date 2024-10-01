@@ -1,48 +1,70 @@
-2024-09-26 10:15:49 - pre_processing - INFO - Logger initialized
-2024-09-26 10:15:49 - pre_processing - INFO - Required user params found
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/plots
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/QC
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/shapefiles
-2024-09-26 10:15:49 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/optimization_models
-2024-09-26 10:15:49 - pre_processing - INFO - Number of cores set to: 10
-2024-09-26 10:15:49 - pre_processing - INFO - Extracting metadata from ortho image
-2024-09-26 10:15:49 - pre_processing - INFO - Calculating GSD
-2024-09-26 10:15:49 - pre_processing - INFO - Geographic Coordinate Reference System detected
-2024-09-26 10:15:49 - pre_processing - INFO - Calculated GSD (cm): 0.8281
-2024-09-26 10:15:50 - pre_processing - INFO - Reading image at: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Images/0712_tw.tif
-2024-09-26 10:15:50 - pre_processing - INFO - Computing rotation angle
-2024-09-26 10:15:54 - pre_processing - INFO - Computed rotation angle: 1 degrees
-2024-09-26 10:15:54 - pre_processing - INFO - Finished rotating image
-2024-09-26 10:15:54 - pre_processing - INFO - Using grayscale method: LAB
-2024-09-26 10:15:54 - pre_processing - INFO - Gray scale will be inverted
-2024-09-26 10:15:54 - pre_processing - INFO - Computing gray image
-2024-09-26 10:15:54 - pre_processing - INFO - Finished computing gray image
-2024-09-26 10:15:54 - image_processing - INFO - Computing box size
-2024-09-26 10:15:54 - image_processing - INFO - Using box width of 552
-2024-09-26 10:15:54 - image_processing - INFO - Using box height of 920
-2024-09-26 10:15:54 - image_processing - INFO - Frequency Supression: Row: 4, Range: 2
-2024-09-26 10:15:54 - image_processing - INFO - Computing sparse skip using 1000 images
-2024-09-26 10:15:54 - image_processing - INFO - Col Spacing: 93
-2024-09-26 10:15:54 - image_processing - INFO - Row Spacing: 103
-2024-09-26 10:15:54 - image_processing - INFO - Computing the signal using 1026 points
-2024-09-26 10:15:56 - image_processing - INFO - Implied Row Spacing: 36.0 in
-2024-09-26 10:15:56 - image_processing - INFO - Implied Range Spacing: 11.2 ft
-2024-09-26 10:15:56 - image_processing - INFO - Finished Processing Sparse Grid
-2024-09-26 10:15:56 - image_processing - INFO - Finished Phase 1
-2024-09-26 10:15:56 - image_processing - INFO - Using fine skip radi of [20, 20]
-2024-09-26 10:15:56 - image_processing - INFO - Starting to process fine grid using 22218 images and 10 cores
-2024-09-26 10:16:15 - image_processing - INFO - Finished processing fine grid in 18.27 seconds
-2024-09-26 10:16:15 - wavepad_processing - INFO - Otsu Thresholding Complete
-2024-09-26 10:16:15 - wavepad_processing - INFO - Trimming Boarder: 543 to 11043 in 0 direction
-2024-09-26 10:16:15 - wavepad_processing - INFO - Closing Wavepad with 5 iterations
-2024-09-26 10:16:15 - wavepad_processing - INFO - Finding Correct Sized Objects with min size: 10000
-2024-09-26 10:16:15 - wavepad_processing - INFO - Average Object Area: 2609699.5 for range wavepad
-2024-09-26 10:16:15 - wavepad_processing - INFO - No Objects to Impute
-2024-09-26 10:16:15 - wavepad_processing - INFO - Otsu Thresholding Complete
-2024-09-26 10:16:15 - wavepad_processing - INFO - Trimming Boarder: 911 to 1732 in 1 direction
-2024-09-26 10:16:15 - wavepad_processing - INFO - Erroding Wavepad with 5 iterations
-2024-09-26 10:16:15 - wavepad_processing - INFO - Finding Correct Sized Objects with min size: 5000
-2024-09-26 10:16:15 - wavepad_processing - INFO - Average Object Area: 47057.77272727273 for row wavepad
-2024-09-26 10:16:22 - wavepad_processing - INFO - Imputing 3 Objects
+2024-10-01 15:51:01 - pre_processing - INFO - Logger initialized
+2024-10-01 15:51:01 - pre_processing - INFO - Required user params found
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/plots
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/QC
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/shapefiles
+2024-10-01 15:51:01 - pre_processing - INFO - Created directory: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Output/0712_tw_pf_output/optimization_models
+2024-10-01 15:51:01 - pre_processing - INFO - Number of cores set to: 10
+2024-10-01 15:51:01 - pre_processing - INFO - Extracting metadata from ortho image
+2024-10-01 15:51:01 - pre_processing - INFO - Calculating GSD
+2024-10-01 15:51:01 - pre_processing - INFO - Geographic Coordinate Reference System detected
+2024-10-01 15:51:01 - pre_processing - INFO - Calculated GSD (cm): 0.8281
+2024-10-01 15:51:01 - pre_processing - INFO - Reading image at: /Users/willdelabretonne/Drone_Images/plot_finder_test_corn/Images/0712_tw.tif
+2024-10-01 15:51:01 - pre_processing - INFO - Computing rotation angle
+2024-10-01 15:51:06 - pre_processing - INFO - Computed rotation angle: 1 degrees
+2024-10-01 15:51:06 - pre_processing - INFO - Finished rotating image
+2024-10-01 15:51:06 - pre_processing - INFO - Using grayscale method: LAB
+2024-10-01 15:51:06 - pre_processing - INFO - Gray scale will be inverted
+2024-10-01 15:51:06 - pre_processing - INFO - Computing gray image
+2024-10-01 15:51:06 - pre_processing - INFO - Finished computing gray image
+2024-10-01 15:51:06 - image_processing - INFO - Computing box size
+2024-10-01 15:51:06 - image_processing - INFO - Using box width of 552
+2024-10-01 15:51:06 - image_processing - INFO - Using box height of 920
+2024-10-01 15:51:06 - image_processing - INFO - Frequency Supression: Row: 4, Range: 2
+2024-10-01 15:51:06 - image_processing - INFO - Computing sparse skip using 1000 images
+2024-10-01 15:51:06 - image_processing - INFO - Col Spacing: 93
+2024-10-01 15:51:06 - image_processing - INFO - Row Spacing: 103
+2024-10-01 15:51:06 - image_processing - INFO - Computing the signal using 1026 points
+2024-10-01 15:51:08 - image_processing - INFO - Implied Row Spacing: 36.0 in
+2024-10-01 15:51:08 - image_processing - INFO - Implied Range Spacing: 11.2 ft
+2024-10-01 15:51:08 - image_processing - INFO - Finished Processing Sparse Grid
+2024-10-01 15:51:08 - image_processing - INFO - Finished Phase 1
+2024-10-01 15:51:08 - image_processing - INFO - Using fine skip radi of [20, 20]
+2024-10-01 15:51:08 - image_processing - INFO - Starting to process fine grid using 22218 images and 10 cores
+2024-10-01 15:51:26 - image_processing - INFO - Finished processing fine grid in 17.78 seconds
+2024-10-01 15:51:26 - wavepad_processing - INFO - Otsu Thresholding Complete
+2024-10-01 15:51:26 - wavepad_processing - INFO - Trimming Boarder: 543 to 11043 in 0 direction
+2024-10-01 15:51:26 - wavepad_processing - INFO - Closing Wavepad with 5 iterations
+2024-10-01 15:51:26 - wavepad_processing - INFO - Finding Correct Sized Objects with min size: 10000
+2024-10-01 15:51:26 - wavepad_processing - INFO - Average Object Area: 2609779.5 for range wavepad
+2024-10-01 15:51:26 - wavepad_processing - INFO - No Objects to Impute
+2024-10-01 15:51:26 - wavepad_processing - INFO - Otsu Thresholding Complete
+2024-10-01 15:51:26 - wavepad_processing - INFO - Trimming Boarder: 911 to 1732 in 1 direction
+2024-10-01 15:51:26 - wavepad_processing - INFO - Erroding Wavepad with 5 iterations
+2024-10-01 15:51:26 - wavepad_processing - INFO - Finding Correct Sized Objects with min size: 5000
+2024-10-01 15:51:27 - wavepad_processing - INFO - Average Object Area: 47084.75384615385 for row wavepad
+2024-10-01 15:51:33 - wavepad_processing - INFO - Imputing 3 Objects
+2024-10-01 15:51:37 - wavepad_processing - INFO - Initial Range Count: 1
+2024-10-01 15:51:37 - wavepad_processing - INFO - Initial Row Count: 96
+2024-10-01 15:51:37 - wavepad_processing - INFO - Computing Initial Model with 96 rectangles
+2024-10-01 15:51:37 - wavepad_processing - INFO - Horizontal Shift for Initial Model: 0
+2024-10-01 15:51:37 - wavepad_processing - INFO - Vertical Shift for Initial Model: 1
+2024-10-01 15:51:38 - find_plots - INFO - Adding 5 missing ranges
+2024-10-01 15:51:38 - find_plots - INFO - Adding Min range
+2024-10-01 15:51:38 - find_plots - INFO - Adding Min range
+2024-10-01 15:51:38 - find_plots - INFO - Adding Max range
+2024-10-01 15:51:38 - find_plots - INFO - Adding Max range
+2024-10-01 15:51:38 - find_plots - INFO - Adding Max range
+2024-10-01 15:51:38 - find_plots - INFO - Finished Adding 5 range(s)
+2024-10-01 15:51:38 - find_plots - INFO - Double checking ranges
+2024-10-01 15:51:38 - find_plots - INFO - Next Max range is out of bounds
+2024-10-01 15:51:38 - find_plots - INFO - Shifted 0 range(s)
+2024-10-01 15:51:38 - find_plots - INFO - Double checking rows
+2024-10-01 15:51:38 - find_plots - INFO - Shifted 1 row(s)
+2024-10-01 15:51:38 - find_plots - INFO - Finished finding all ranges and rows
+2024-10-01 15:51:38 - find_plots - INFO - Starting Distance Optimization
+2024-10-01 15:51:38 - find_plots - INFO - Start Point: [ 4 48]
+2024-10-01 15:51:38 - find_plots - INFO - Min Distance | Max Distance | K from Geometric Mean Sigmoid: 0.0 | 218.0 | 1
+2024-10-01 15:51:38 - find_plots - INFO - Finished Distance Optimization

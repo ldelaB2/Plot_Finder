@@ -69,19 +69,7 @@ class wavepad:
         self.final_rect_list = self.initial_rect_list
 
     def phase_four(self):
-        # Pulling the params
-        label_start = self.params["label_start"]
-        label_flow = self.params["label_flow"]
-
-        # Setting the range and row
-        set_range_row(self.final_rect_list)
-        # Setting the id
-        set_id(self.final_rect_list, start = label_start, flow = label_flow)
-        print("Finished Adding Labels")
-
-        # Final Optimization
-        self.create_opt_param_dict("fine")
-        final_optimize(self.final_rect_list, self.opt_param_dict, self.initial_model)
+       
 
 
 

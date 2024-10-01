@@ -4,7 +4,6 @@ from shapely.geometry import Polygon
 import geopandas as gpd
 import os
 
-
 def bindvec(in_array):
     """
     This function normalizes an input array.
@@ -130,38 +129,26 @@ def create_shapefile(rect_list, meta_data, inverse_rotation_matrix, file_name):
     gdf.to_file(file_name, driver="GPKG")
     print("Finished Creating Shapefile")
 
-def minimize_quadratic(x, y, lower_bound, upper_bound, return_value = False):
-    # Find the coefficients of the quadratic
-    coeff = np.polyfit(x, y, 2)
-    # Create the quadratic function
-    quadratic = np.poly1d(coeff)
-    # Compute the first derivative of the quadratic
-    first_derivative = np.polyder(quadratic)
-    # Compute the second derivative
-    second_derivative = np.roots(first_derivative)
-
-    # If the second derivitive is negative we know it is concave down
-    if second_derivative < 0:
-        # Check the bounds of the quadratic
-        lower_y = quadratic(lower_bound)
-        upper_y = quadratic(upper_bound)
-
-        if lower_y < upper_y:
-            minx = lower_bound
-        else:
-            minx = upper_bound
+def geometric_median(points, weights=None, tol = 1e-2):
+    points = np.asarray(points)
+    if weights is None:
+        weights = np.ones(len(points))
     else:
-        # Find the critical point
-        root = np.roots(first_derivative)[0]
-        if root >= lower_bound and root <= upper_bound:
-            minx = root
-        elif root < lower_bound:
-            minx = lower_bound
-        else:
-            minx = upper_bound
-    if return_value:
-        miny = quadratic(minx)
-    else:
-        miny = minx
-    return minx, miny 
+        weights = np.asarray(weights)
+    
+    guess = np.mean(points, axis = 0)
+
+    while True:
+        distances = np.linalg.norm(points - guess, axis=1)
+        nonzero = (distances != 0)
         
+        if not np.any(nonzero):
+            return guess
+        
+        w = weights[nonzero] / distances[nonzero]
+        new_guess = np.sum(points[nonzero] * w[:, None], axis=0) / np.sum(w)
+        
+        if np.linalg.norm(new_guess - guess) < tol:
+            return new_guess
+        
+        guess = new_guess

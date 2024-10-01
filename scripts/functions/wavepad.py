@@ -3,6 +3,7 @@ import numpy as np
 from scipy.optimize import dual_annealing
 from scipy.stats import poisson
 from matplotlib import pyplot as plt
+from scipy.interpolate import LSQUnivariateSpline
 
 from functions.general import find_consecutive_in_range
 from functions.image_processing import find_correct_sized_obj
@@ -105,10 +106,11 @@ def find_center_line(img, poly_degree, direction, logger):
         unique_values, counts = np.unique(subset[:, direction], return_counts=True)
         position = np.bincount(subset[:, direction], weights=subset[:, (1 - direction)])
         mean_values = (position[unique_values] / counts).astype(int)
-        coefficients = np.polyfit(unique_values, mean_values, poly_degree)
-        poly = np.poly1d(coefficients)
+        n_knots = 5
+        knots = np.linspace(unique_values[0], unique_values[-1], n_knots)[1:-1]
+        spl = LSQUnivariateSpline(unique_values, mean_values, knots, k = poly_degree)
         x = np.arange(0, img.shape[direction], 1)
-        y = poly(x).astype(int)
+        y = spl(x).astype(int)
 
         if direction == 0:
             img_points = skel[x,y]

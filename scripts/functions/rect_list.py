@@ -1,5 +1,7 @@
 import numpy as np
 import cv2 as cv
+from sklearn.cluster import KMeans
+from matplotlib import pyplot as plt
 
 from classes.rectangles import rectangle
 from functions.image_processing import four_2_five_rect
@@ -29,10 +31,22 @@ def build_rect_list(range_skel, row_skel, img):
         return output_list, num_ranges, num_rows, mean_width, mean_height
 
 def build_rectangles(range_skel, col_skel):
-    num_ranges, ld_range, _, _ = cv.connectedComponentsWithStats(dialate_skel(range_skel))
-    num_rows, ld_row, _, _ = cv.connectedComponentsWithStats(dialate_skel(col_skel))
+    dialated_range = dialate_skel(range_skel, 3)
+    dialated_col = dialate_skel(col_skel, 3)
 
-    cp = np.argwhere(range_skel.astype(bool) & col_skel.astype(bool))
+    num_ranges, ld_range, _, _ = cv.connectedComponentsWithStats(dialated_range)
+    num_rows, ld_row, _, _ = cv.connectedComponentsWithStats(dialated_col)
+
+    # Find the corner points
+    cp = np.argwhere(dialated_range.astype(bool) & dialated_col.astype(bool))
+    # Find the number of clusters
+    num_clusters = (num_ranges - 1) * (num_rows - 1)
+
+    kmeans = KMeans(n_clusters = num_clusters, n_init = 100).fit(cp)
+    labels = kmeans.labels_
+    centroids = kmeans.cluster_centers_
+    cp = np.round(centroids).astype(int)
+
 
     rect = []
     for e in range(1, num_ranges - 1):
@@ -131,3 +145,46 @@ def set_id(rect_list, start, flow):
 
     return
 
+def compute_spiral_path(rect_list):
+    def find_center(rect_list):
+        # Get the range and row values
+        ranges = np.array([rect.range for rect in rect_list])
+        rows = np.array([rect.row for rect in rect_list])
+        # Get the unique range and row values
+        unique_ranges = np.unique(ranges)
+        unique_rows = np.unique(rows)
+        center_range = np.round(np.median(unique_ranges)).astype(int)
+        center_row = np.round(np.median(unique_rows)).astype(int)
+        indx = np.where((ranges == center_range) & (rows == center_row))[0][0]
+        center_x = rect_list[indx].center_x
+        center_y = rect_list[indx].center_y
+        return [center_x, center_y]
+    
+    def compute_polar_coordinates(rect_list, center):
+        # Compute the polar coordinates
+        polar_coords = []
+        for rect in rect_list:
+            dx = rect.center_x - center[0]
+            dy = rect.center_y - center[1]
+            rng = rect.range
+            row = rect.row
+            r = np.sqrt(dx**2 + dy**2)
+            theta = np.arctan2(dy, dx)
+            polar_coords.append([r, theta, rng, row])
+        return polar_coords
+    
+    def sort_polar_coordinates(polar_coords):
+        polar_coords = np.array(polar_coords)
+        distance = polar_coords[:,0]
+        angle = polar_coords[:,1]
+        # Sort in descending order
+        sorted_indx = np.lexsort((angle, distance))
+        sorted_points = polar_coords[sorted_indx]
+        rng_row = sorted_points[:,2:]
+        rng_row = rng_row.astype(int)
+        return rng_row
+    
+    center_coord = find_center(rect_list)
+    polar_coords = compute_polar_coordinates(rect_list, center_coord)
+    path = sort_polar_coordinates(polar_coords)
+    return path
