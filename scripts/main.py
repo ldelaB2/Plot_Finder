@@ -4,6 +4,8 @@ import os
 def main(default_param_path, user_param_path, logger_path):
     job = plot_finder_job(default_param_path, user_param_path, logger_path)
     job.run()
+
+    return
     
 if __name__ == '__main__':
     #param_path = sys.argv[1]
@@ -12,3 +14,5 @@ if __name__ == '__main__':
     logger_path = os.path.join(os.path.dirname(__file__), "pf_log.log")
 
     main(default_param_path, user_param_path, logger_path)
+    
+    exit(0)

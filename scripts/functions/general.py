@@ -108,11 +108,8 @@ def save_plots(self):
     print("Finished Saving Plots")
     return
         
-def create_shapefile(rect_list, meta_data, inverse_rotation_matrix, file_name):
+def create_shapefile(rect_list, original_transform, original_crs, inverse_rotation_matrix, file_name):
     poly_data = []
-    original_aff = meta_data['transform']
-    original_crs = meta_data['crs']
-
     for rect in rect_list:
         points = rect.compute_corner_points()
         points = np.column_stack((points, np.ones(points.shape[0])))
@@ -120,14 +117,15 @@ def create_shapefile(rect_list, meta_data, inverse_rotation_matrix, file_name):
         if inverse_rotation_matrix is not None:
             points = np.dot(inverse_rotation_matrix, points.T).T
             
-        points = original_aff * points.T
+        points = original_transform * points.T
         points = tuple(zip(points[0], points[1]))
         temp_poly = Polygon(points)
         poly_data.append({'geometry': temp_poly, 'label': rect.ID})
     
     gdf = gpd.GeoDataFrame(poly_data, crs=original_crs)
     gdf.to_file(file_name, driver="GPKG")
-    print("Finished Creating Shapefile")
+
+    return
 
 def geometric_median(points, weights=None, tol = 1e-2):
     points = np.asarray(points)

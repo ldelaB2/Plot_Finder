@@ -3,16 +3,14 @@ from classes.optimize_plots import optimize_plots
 from classes.params import pf_params
 from classes.logger import pf_logger
 import time
+import numpy as np
 
 class plot_finder_job:
     def __init__(self, default_param_path, user_param_path, logger_path):
         self.loggers = pf_logger(logger_path)
         self.params = pf_params(default_param_path, user_param_path, self.loggers.pre_processing)
-        self.run() 
 
     def run(self):
-        #self.print_plot_finder_logo(intro = True)
-
         if self.params.user_params["find_plots"] == True:
             find_plots_start_time = time.time()
 
@@ -21,7 +19,7 @@ class plot_finder_job:
 
             # End time
             end_time = time.time()
-            self.loggers.find_plots.info(f"Total time for finding plots: {end_time - find_plots_start_time}")
+            self.loggers.find_plots.info(f"Total time for finding plots: {np.round(end_time - find_plots_start_time)}")
 
         if self.params.user_params["optimize_plots"] == True:
             optimizing_start_time = time.time()
@@ -31,11 +29,13 @@ class plot_finder_job:
 
             # End time
             end_time = time.time()
-            self.loggers.optimize_plots.info(f"Total time for optimizing plots: {end_time - optimizing_start_time}")
+            self.loggers.optimize_plots.info(f"Total time for optimizing plots: {np.round(end_time - optimizing_start_time)}")
 
-        #self.print_plot_finder_logo(intro = False)
+        self.print_plot_finder_logo()
 
-    def print_plot_finder_logo(self, intro = True):
+        return
+
+    def print_plot_finder_logo(self):
         # Plotting the log
         banner = [
                 "              ____   __        __     ______ _             __           ",
@@ -79,22 +79,13 @@ class plot_finder_job:
         ]
         
         
-
-        if intro == True:
-            for element in banner:
-                print(element)
-            print("\n")
-            for element in logo:
-                print(element)
-
-            print(f"Using {self.params['num_cores']} cores to process image")
-            print(f"Reading Images from: \n{self.params['img_path']} \nSaving Output to: \n{self.params['output_path']}")
-
-        else:
-            for element in banner:
-                print(element)
-            print("\n")
-            
-            print(f"""Finished Processing Image: {self.params['img_name']}
-            Thanks for using PLot Finder! Keep on Keeping on - Squid Billy Willy""")
+        for element in logo:
+            print(element)
+        print("\n")
+        for element in banner:
+            print(element)
+        print("\n")
+        
+        print(f"""Finished Processing Image: {self.params.user_params['image_name']}
+        Thanks for using PLot Finder! Keep on Keeping on - Squid Billy Willy""")
                                                            

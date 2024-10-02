@@ -2,33 +2,44 @@ import numpy as np
 import cv2 as cv
 import geopandas as gpd
 from matplotlib import pyplot as plt
+import os
 
 from functions.image_processing import four_2_five_rect
-from functions.rect_list import set_range_row, set_id
+from functions.rect_list import build_rect_list_points, set_id
 from functions.display import disp_rectangles
+from classes.model import model
+import time
+from functions.optimization import optimize_xy, optimize_t, optimize_hw
+from functions.rect_list_processing import distance_optimize
+from functions.general import create_shapefile
 
 class optimize_plots:
-    def __init__(self, plot_finder_job):
-        self.pf_job = plot_finder_job
-        self.pre_process()
+    def __init__(self, plot_finder_job_params, loggers):
+        self.params = plot_finder_job_params
+        self.logger = loggers.optimize_plots
         self.phase_one()
 
-    def pre_process(self):
-        # Pull the params
-        nrows = self.pf_job.params['nrows']
-        nranges = self.pf_job.params['nranges']
-        label_start = self.pf_job.params["label_start"]
-        label_flow = self.pf_job.params["label_flow"]
-        shp_path = self.pf_job.params['shapefile_path']
-        crs = self.pf_job.meta_data['crs']
-        transform = self.pf_job.meta_data['transform']
+    def phase_one(self):
+        # Check that the shapefile exists
+        shapefile_path = self.params["shapefile_path"]
+        try:
+            gdf = gpd.read_file(shapefile_path)
+            if gdf is not None:
+                self.logger.info(f"Shapefile found at: {shapefile_path}")
+            else:
+                self.logger.critical(f"Shapefile not found at: {shapefile_path}. Exiting...")
+                exit(1)
+        except Exception as e:
+            self.logger.critical(f"Error reading shapefile at: {shapefile_path}. Error: {e}. Exiting...")
+            exit(1)
 
-        # Loading in the shapefile
-        gdf = gpd.read_file(shp_path)
+        # Check that the shapefile has the correct CRS
+        img_crs = self.params["meta_data"]['crs']
+        original_transform = self.params["meta_data"]['transform']
+        rotation_matrix = self.params["rotation_matrix"]
 
-        # Converting to the same crs as the image
-        gdf = gdf.to_crs(crs)
-        
+        gdf = gdf.to_crs(img_crs)
+
         # Looping through the shapefile
         rect_coords = []
 
@@ -40,8 +51,15 @@ class optimize_plots:
             gps_coords = gps_coords[:-1, :]
      
             # Converting to pixel coordinates
-            pixel_coords = ~transform * gps_coords.T
-            pixel_coords = np.round(pixel_coords).astype(int).T
+            pixel_coords = ~original_transform * gps_coords.T
+            pixel_coords = np.array(pixel_coords).T
+
+            if rotation_matrix is not None:
+                pixel_coords = np.hstack((pixel_coords, np.ones((pixel_coords.shape[0], 1))))
+                pixel_coords = np.dot(pixel_coords, rotation_matrix.T)
+                
+
+            pixel_coords = np.round(pixel_coords).astype(int)
             pixel_coords = np.flip(pixel_coords, axis = 1)
 
             #Sort the top and bottom points
@@ -63,30 +81,90 @@ class optimize_plots:
             rect = four_2_five_rect([top_left, top_right, bottom_left, bottom_right])
             rect_coords.append(rect)
 
-        # Creating the rect list
-        self.rect_list = build_rect_list(rect_coords, self.pf_job.img_ortho)
-        set_range_row(self.rect_list, nranges, nrows)
-        set_id(self.rect_list, label_start, label_flow)
-        print("T")
-
-       
     
-    def phase_one(self):
-        opt_param_dict = {}
-        opt_param_dict['method'] = 'SA'
-        opt_param_dict['x_radi'] = 20
-        opt_param_dict['y_radi'] = 20
-        opt_param_dict['theta_radi'] = 5
-        opt_param_dict['maxiter'] = 100
+        # Get the required params to build the rectangles
+        num_rows = self.params["number_rows"]
+        num_ranges = self.params["number_ranges"]
+        gray_img = self.params["gray_img"]
 
-        # Build the rectangles
-        mean_width = np.mean([rect[2] for rect in self.rect_list])
-        mean_height = np.mean([rect[3] for rect in self.rect_list])
+        initial_rect_list = build_rect_list_points(rect_coords, num_ranges, num_rows, gray_img, self.logger)
 
+        # Get the params to set the ID's
+        label_start = self.params["label_start"]
+        label_flow = self.params["label_flow"]
 
+        set_id(initial_rect_list, label_start, label_flow)
 
-        self.rect_list.build_model()
-        self.rect_list.optimize_rectangles(opt_param_dict)
-        tmp = self.rect_list.disp_rectangles()
-        plt.imshow(tmp)
+        self.phase_two(initial_rect_list)
+
+    def phase_two(self, initial_rect_list):
+        # Pull the params
+        logger = self.logger
+        model_size = self.params["model_size"]
+        existing_models = self.params["models"]
+
+        if existing_models:
+            optimization_model = existing_models["initial_model"]
+        else:
+            optimization_model = model(model_size).compute_initial_model(initial_rect_list, self.logger)
+
+        # Get the optimization params
+        x_radi = self.params["x_radi"]
+        y_radi = self.params["y_radi"]
+        t_radi = self.params["t_radi"]
+        shrink_width = self.params["shrink_width"]
+        shrink_height = self.params["shrink_height"]
+
+        iterations = self.params["optimization_iteration"]
+        img = self.params["gray_img"]
+        neighbor_radi = self.params["neighbor_radi"]
+        kappa = 0.01
+
+        optimized_rect_list = initial_rect_list
+
+        for cnt in range(iterations):
+            logger.info(f"Starting X,Y Optimization Iteration: {cnt + 1}")
+            start_time = time.time()
+
+            # Optimize XY
+            optimized_rect_list = optimize_xy(optimized_rect_list, x_radi, y_radi, img, optimization_model)
+
+            # Neighbor Optimization
+            optimized_rect_list = distance_optimize(optimized_rect_list, neighbor_radi, kappa, logger)
+
+            # Update the model
+            optimization_model = model(model_size).compute_mean_model(optimized_rect_list)
+            
+            end_time = time.time()
+            e_time = np.round(end_time - start_time, 2)
+            logger.info(f"Finished Optimization Iteration: {cnt + 1} in {e_time} seconds")
+
+        # Optimize Theta
+        logger.info("Starting Theta Optimization")
+        optimized_rect_list = optimize_t(optimized_rect_list, t_radi, optimization_model)
+
+        # Shrink the rectangles
+        logger.info("Starting Height and Width Optimization")
+        optimized_rect_list = optimize_hw(optimized_rect_list, shrink_height, shrink_width, optimization_model)
+        
+        logger.info("Finished Optimization")
+        # Create the output
+        self.phase_three(optimized_rect_list)
+
+    def phase_three(self, optimize_rect_list):
+        logger = self.logger
+        # Pull the params
+        output_dir = self.params["pf_output_directorys"]
+        shp_directory = output_dir["shapefiles"]
+        img_name = self.params["image_name"]
+        original_transform = self.params["meta_data"]["transform"] 
+        original_crs = self.params["meta_data"]["crs"]
+        inverse_rotation = self.params["inverse_rotation_matrix"]
+
+        shp_path = os.path.join(shp_directory, f"{img_name}_optimized_plots.gpkg")
+        logger.info(f"Creating Optimized Shapefile at: {shp_path}")
+        create_shapefile(optimize_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
+
+        logger.info("Finished Optimizing Plots")
+        return
 

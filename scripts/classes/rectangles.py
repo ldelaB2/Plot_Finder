@@ -27,7 +27,6 @@ class rectangle:
         self.added = False
         self.unit_sqr = None
         self.neighbors = None
-        self.neighbor_position = {}
         self.recompute_unit_sqr = True
         self.x_radi = None
         self.y_radi = None
@@ -104,6 +103,8 @@ class rectangle:
             self.center_y += delta_y
         else:
             return
+
+        return
         
     
     def compute_neighbor_position(self, neighbor):
@@ -130,6 +131,15 @@ class rectangle:
         estimated_y = self.center_y + dy_rot
 
         return estimated_x, estimated_y
+    
+    def compute_radi(self, x_radi = None, y_radi = None):
+        if x_radi is not None:
+            self.x_radi = np.round(self.width * x_radi).astype(int)
+
+        if y_radi is not None:
+            self.y_radi = np.round(self.height * y_radi).astype(int)
+
+        return
         
 
 

@@ -54,7 +54,11 @@
     "save_optimization_model": false,
     "x_radi": 0.25,
     "y_radi": 0.15,
+    "t_radi": 5,
+    "shrink_width": 0.1,
+    "shrink_height": 0.1,
     "neighbor_radi": 2,
+    "optimization_iteration": 5,
 
     "_commment": "Internal Parameters (Do not change)",
     "meta_data": null,

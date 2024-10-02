@@ -1,25 +1,16 @@
 import numpy as np
-from shapely.geometry import Polygon, Point
-from collections import deque
-from functions.display import disp_spiral_path
 from matplotlib import pyplot as plt
 
-def compute_neighbors(rect_list, neighbor_radi, existing_list = None):
+def compute_neighbors(rect_list, neighbor_radi):
     # Find min and max
     ranges = np.array([rect.range for rect in rect_list])
     rows = np.array([rect.row for rect in rect_list])
-
-    # Add existing rectangles if needed
-    if existing_list is not None:
-        existing_ranges = np.array([rect.range for rect in existing_list])
-        existing_rows = np.array([rect.row for rect in existing_list])
-        ranges = np.concatenate((ranges, existing_ranges))
-        rows = np.concatenate((rows, existing_rows))
 
     max_range = np.max(ranges)
     min_range = np.min(ranges)
     max_row = np.max(rows)
     min_row = np.min(rows)
+
     for rect in rect_list:
         # Find self range and row
         rng = rect.range

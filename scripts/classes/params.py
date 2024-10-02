@@ -216,7 +216,7 @@ class pf_params:
             self.logger.info(f"Using user defined rotation angle: {user_choice}")
             theta = user_choice
 
-        self.user_params["inverse_rotation_matrix"], self.user_params["img_ortho"] = rotate_img(self.user_params["img_ortho"], theta) 
+        self.user_params["inverse_rotation_matrix"], self.user_params["rotation_matrix"], self.user_params["img_ortho"] = rotate_img(self.user_params["img_ortho"], theta) 
         self.logger.info("Finished rotating image")
         
 

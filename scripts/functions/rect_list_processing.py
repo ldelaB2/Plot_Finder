@@ -121,20 +121,28 @@ def compare_next_to_current(rect_list, direction, logger):
     current_min_score = np.mean([rect.score for rect in current_min])
     current_max_score = np.mean([rect.score for rect in current_max])
 
-    # Compare the next min to current max
-    if next_min_score < current_max_score:
-        drop_list = current_max
-        add_list = next_min
-        update_flag = True
+    if current_min_score < current_max_score:
+        # Compare the next min to current max
+        if next_min_score < current_max_score:
+            drop_list = current_max
+            add_list = next_min
+            update_flag = True
+        else:
+            update_flag = False
 
-    # Compare next max to current min
-    elif next_max_score < current_min_score:
-        drop_list = current_min
-        add_list = next_max
-        update_flag = True
-
+    elif current_max_score < current_min_score:
+        # Compare next max to current min
+        if next_max_score < current_min_score:
+            drop_list = current_min
+            add_list = next_max
+            update_flag = True
+        else:
+            update_flag = False
+          
     else:
         update_flag = False
+
+    if not update_flag:
         add_list = []
         drop_list = []
 
@@ -250,21 +258,18 @@ def compute_neighbors(rect_list, neighbor_radi):
 
     return
 
-
 def distance_optimize(rect_list, neighbor_radi, kappa, logger):
     logger.info("Starting Distance Optimization")
 
     #Compute the spiral path
     spiral_path = compute_spiral_path(rect_list)
     logger.info(f"Start Point: {spiral_path[0]}")
-
     # Compute the neighbors
     compute_neighbors(rect_list, neighbor_radi)
 
-    # Set up the rect dictionary
-    rect_dict = {(rect.range, rect.row): rect for rect in rect_list}
-
-    neighbor_expected_centers = {}
+    # Set up for the first pass
+    first_pass = [copy.copy(rect) for rect in rect_list]
+    rect_dict = {(rect.range, rect.row): rect for rect in first_pass}
     distance_from_geometric_mean = []
 
     # Compute the geometric median for myself
@@ -286,39 +291,66 @@ def distance_optimize(rect_list, neighbor_radi, kappa, logger):
         # Compute the geometric median
         geometric_mean = np.round(geometric_median(expected_centers)).astype(int)
 
-        # Add to the dict
-        neighbor_expected_centers[me] = geometric_mean
-
+        # Compute the distance from the geometric mean
         my_distance = np.linalg.norm(np.array([rect.center_x, rect.center_y]) - geometric_mean)
+
+        # Update the rect center
+        rect.center_x = geometric_mean[0]
+        rect.center_y = geometric_mean[1]
+
         distance_from_geometric_mean.append(my_distance)
 
     # Create the sigmoid for scaling the weight of the distance in placement
-    x0 = np.min(distance_from_geometric_mean)
-    y0 = np.max(distance_from_geometric_mean)
-    k = kappa
+    x0 = np.mean(distance_from_geometric_mean)
     
-    logger.info(f"Min Distance | Max Distance | K from Geometric Mean Sigmoid: {np.round(x0)} | {np.round(y0)} | {k}")
+    logger.info(f"Mean Distance | K from Geometric Mean Sigmoid: {np.round(x0)} | {kappa}")
     
     # Compute the sigmoid values
-    f_values = (1 - np.exp(-k * (distance_from_geometric_mean - x0))) / (1 - np.exp(-k * (y0 - x0)))
+    def sigmoid(x):
+        y = 1/ (1 + np.exp(-kappa * (x - x0)))
+        return y
+    
+    # Setup for the second pass
+    second_pass = [copy.copy(rect) for rect in rect_list]
+    rect_dict = {(rect.range, rect.row): rect for rect in second_pass}
 
-    # Update the rect centers
-    for indx, point in enumerate(spiral_path):
+    for point in spiral_path:
+        # Myself
         me = (point[0], point[1])
         rect = rect_dict[me]
-        current_center = np.array([rect.center_x, rect.center_y])
-        expected_center = neighbor_expected_centers[me]
+        # My neighbors
+        my_neighbors = rect.neighbors
 
-        delta_center = expected_center - current_center
-        weighted_delta = delta_center * f_values[indx]
-        weighted_delta = np.round(weighted_delta).astype(int)
+        # Save the output
+        expected_centers = []
+        for neighbor in my_neighbors:
+            # Neighbor
+            neighbor_rect = rect_dict[neighbor]
+            # Where my neighbor thinks I should be
+            expected_centers.append(neighbor_rect.compute_neighbor_position(me))
+            
+        # Compute the geometric median
+        geometric_mean = np.round(geometric_median(expected_centers)).astype(int)
 
+        # Compute the distance from the geometric mean
+        delta_center = geometric_mean - np.array([rect.center_x, rect.center_y])
+
+        # Compute the weight
+        my_distance = np.linalg.norm(delta_center)
+        weight = sigmoid(my_distance)
+        if weight > .99:
+            rect.flagged = True
+
+        weighted_delta = np.round(delta_center * weight).astype(int)
+
+        # Update the rect center
         rect.center_x += weighted_delta[0]
         rect.center_y += weighted_delta[1]
 
+
     logger.info("Finished Distance Optimization")
 
-    return rect_list
+    return second_pass
 
 
 

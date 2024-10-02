@@ -6,7 +6,6 @@ from multiprocessing import shared_memory
 import time
 
 from classes.sub_image import sub_image
-from classes.wave_pad import wavepad
 from classes.model import model, compute_template_image
 
 from functions.image_processing import build_path
@@ -208,28 +207,30 @@ class find_plots():
         shp_directory = output_dir["shapefiles"]
         img_name = self.params["image_name"]
         neighbor_radi = self.params["neighbor_radi"]
-        distance_weight = 1
+        original_transform = self.params["meta_data"]["transform"] 
+        original_crs = self.params["meta_data"]["crs"]
+        inverse_rotation = self.params["inverse_rotation_matrix"]
+        kappa = .1
 
         # Setting the range and row
         set_range_row(initial_rect_list)
+        logger.info(f"Setting ID starting from {label_start} with a flow of {label_flow}")
         set_id(initial_rect_list, start = label_start, flow = label_flow)
 
         # Distance Optimize
-        final_rect_list = distance_optimize(initial_rect_list, neighbor_radi, distance_weight, logger)
-
-        
-        # Setting the id
-        
-        print("Finished Adding Labels")
+        final_rect_list = distance_optimize(initial_rect_list, neighbor_radi, kappa, logger)
 
         # Create the shapefile
-        shp_path = os.path.join(self.pf_job.output_paths['shape_dir'], f"{self.pf_job.params['img_name']}_fft.gpkg")
-        create_shapefile(fft_rect_list, self.pf_job.meta_data, self.inverse_rotation, shp_path)
+        shp_path = os.path.join(shp_directory, f"{img_name}_fft.gpkg")
+        logger.info(f"Creating the fft shapefile at {shp_path}")
+        create_shapefile(final_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
 
         # Update the params file
-        self.pf_job.params['shapefile_path'] = shp_path
+        self.params["shapefile_path"] = shp_path
 
-        print("Finished FFT Rectangle Placement")
+        logger.info("Finished Finding Plots")
+
+        return
 
 
 def phase_two_worker(args):

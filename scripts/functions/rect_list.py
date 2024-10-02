@@ -73,7 +73,6 @@ def build_rectangles(range_skel, col_skel):
 
     return rect, num_ranges, num_rows
 
-
 def set_range_row(rect_list):
     range_list = np.array([rect.range for rect in rect_list])
     row_list = np.array([rect.row for rect in rect_list])
@@ -188,3 +187,55 @@ def compute_spiral_path(rect_list):
     polar_coords = compute_polar_coordinates(rect_list, center_coord)
     path = sort_polar_coordinates(polar_coords)
     return path
+
+def build_rect_list_points(points, num_ranges, num_rows, img, logger):
+    points = np.array(points)
+
+    # Cluster the range values
+    range_data = points[:,0].reshape(-1,1)
+    range_k_means = KMeans(n_clusters = num_ranges, n_init = 500).fit(range_data)
+    range_centers = range_k_means.cluster_centers_
+    range_labels = range_k_means.labels_
+
+    # Assign the range labels
+    sorted_ranges = np.argsort(range_centers, axis = 0)
+    sorted_range_labels = np.copy(range_labels)
+
+    for indx in range(num_ranges):
+        sorted_range_labels[range_labels == sorted_ranges[indx]] = indx
+
+    points = np.hstack((points, sorted_range_labels.reshape(-1,1)))
+
+    # Assign the row labels
+    labeled_ranges = []
+    for indx in range(num_ranges):
+        range_points = points[points[:,-1] == indx,:]
+        
+        if range_points.shape[0] != num_rows:
+            logger.error(f"For range {indx} detected {range_points.shape[0]} rows, expected {num_rows}")
+            logger.info("Make sure to check final labels by hand")
+        
+        sorted_range = range_points[np.argsort(range_points[:,1])]
+        rows = np.arange(0, range_points.shape[0], 1)
+        sorted_range = np.hstack((sorted_range, rows.reshape(-1,1)))
+        labeled_ranges.append(sorted_range)
+
+    labeled_ranges = np.vstack(labeled_ranges)
+
+    # Create the rectangles
+    output_list = []
+    for rect in labeled_ranges:
+        rect = rectangle(rect)
+        rect.img = img
+        output_list.append(rect)
+
+    return output_list
+
+
+
+
+
+
+
+
+

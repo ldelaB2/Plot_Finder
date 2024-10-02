@@ -77,7 +77,7 @@ def rotate_img(img, theta):
         rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = np.zeros(img.shape[2]))
  
     # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
-    return inverse_rotation_matrix, rotated_img
+    return inverse_rotation_matrix, rotation_matrix, rotated_img
 
 def extract_rectangle(center_x, center_y, theta, width, height, unit_sqr, img):
     theta = np.radians(theta)
