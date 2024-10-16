@@ -1,7 +1,0 @@
-<RCC>
-    <qresource prefix="/plugins/plot_finder" >
-        <file>Bucky.png</file>
-        <file>Joey_B.png</file>
-        <file>JJetta.png</file>
-    </qresource>
-</RCC>

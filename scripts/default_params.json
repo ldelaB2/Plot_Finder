@@ -5,6 +5,7 @@
     "number_rows": null,
     "number_ranges": null,
     "row_spacing_in": null,
+    "row_length_ft": null,
 
     "_comment": "Parameters for gray scale method",
     "custom_grayscale": false,
