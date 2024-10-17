@@ -1,7 +1,6 @@
 {   
     "_comment": "Required parameters for the script to run",
-    "ortho_path": null,
-    "output_directory": null,
+    "docker_source": null,
     "number_rows": null,
     "number_ranges": null,
     "row_spacing_in": null,
@@ -62,14 +61,14 @@
     "optimization_iteration": 5,
 
     "_comment": "Docker Parameters",
-    "docker_source": null,
+    "IRODS_image_path": null,
+    "IRODS_output_path": null,
     "IRODS_HOST": null,
     "IRODS_PORT": null,
     "IRODS_ZONE": null,
     "IRODS_USER_NAME": null,
     "IRODS_PASSWORD": null,
     "IRODS_PATH": null,
-
 
     "_commment": "Internal Parameters (Do not change)",
     "meta_data": null,

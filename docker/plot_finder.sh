@@ -51,7 +51,5 @@ else
     exit 1
 fi
 
-# Change the output directory in the final params file
-jq '(.ouput_directory) = "'$data_set_path'"' "$data_set_path/final_params.json" > "$data_set_path/final_params.json"
 
 # Run the plot finder
