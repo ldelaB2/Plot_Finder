@@ -2,7 +2,7 @@
 
 ##### Figure out which source we are using ######
 # Data set path
-data_set_path="/data_set"
+data_set_path="/plot_finder/data_set"
 docker_param="docker_source"
 
 # Check if the param.json file exists, if it does read it in
@@ -25,10 +25,16 @@ else
     exit 1
 fi
 
-#### Local Source ###
-
+#### Local Source #### 
 if [[ "$docker_source" == "local" ]]; then
     echo "Using Local Source"
 
-else
+
+#### Cyverse Source #### 
+elif [[ "$docker_source" == "cyverse" ]]; then
     echo "Using IRODS"
+
+else
+    echo "Unknown source: $docker_source"
+    exit 1
+fi

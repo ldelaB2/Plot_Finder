@@ -16,13 +16,13 @@ RUN apt-get update && \
 
 
 # Clone GitHub repository and download dependencies
-RUN git clone https://github.com/ldelaB2/Plot_Finder.git /app && \
-    pip install --no-cache-dir -r /app/requirements.txt
+RUN git clone https://github.com/ldelaB2/Plot_Finder.git /plot_finder && \
+    pip install --no-cache-dir -r /plot_finder/requirements.txt
 
 # Install IRODS and make scripts executable
-RUN chmod +x /app/docker/install_iRODS.sh && \
-    chmod +x /app/docker/download_and_run.sh && \
-    chmod +x /app/docker/authenticate_irods.sh && \
-    /app/docker/install_iRODS.sh && \
-    chmod -R a+rwx /app
+RUN chmod +x /plot_finder/docker/install_iRODS.sh && \
+    chmod +x /plot_finder/docker/download_and_run.sh && \
+    chmod +x /plot_finder/docker/authenticate_irods.sh && \
+    /plot_finder/docker/install_iRODS.sh && \
+    chmod -R a+rwx /plot_finder
 
