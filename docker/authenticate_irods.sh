@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Set up iRODS 
-mkdir -p /app/.irods
-touch /app/.irods/.irodsA
+mkdir -p /plot_finder/.irods
+touch /plot_finder/.irods/.irodsA
 
 echo '{
   "irods_host": "'"$IRODS_HOST"'",
@@ -11,12 +11,11 @@ echo '{
   "irods_user_name": "'"$IRODS_USER_NAME"'",
   "irods_authentication_scheme": "native",
   "irods_password": "'"$IRODS_PASSWORD"'"
-}' > /app/.irods/irods_environment.json
+}' > /plot_finder/.irods/irods_environment.json
 
 # Set up iRODS environment variables
-export IRODS_ENVIRONMENT_FILE=/app/.irods/irods_environment.json
-export IRODS_AUTHENTICATION_FILE=/app/.irods/.irodsA
+export IRODS_ENVIRONMENT_FILE=/plot_finder/.irods/irods_environment.json
+export IRODS_AUTHENTICATION_FILE=/plot_finder/.irods/.irodsA
 
 # Finalize iRODS connection
 echo -e "$IRODS_PASSWORD\n" | iinit
-export HOME='/'
