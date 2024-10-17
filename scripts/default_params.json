@@ -62,7 +62,7 @@
     "optimization_iteration": 5,
 
     "_comment": "Docker Parameters",
-    "docker_source": "local",
+    "docker_source": null,
     "IRODS_HOST": null,
     "IRODS_PORT": null,
     "IRODS_ZONE": null,
