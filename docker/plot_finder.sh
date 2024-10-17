@@ -14,7 +14,6 @@ if [[ -f "$param_file" ]]; then
     # Check if the docker source exists and read its value
     if jq -e ".$docker_param" "$param_file" > /dev/null; then
         docker_source=$(jq -r ".$docker_param" "$param_file")
-        echo "Using Docker Source: $docker_source"
     else
         echo "'$docker_param' not found in the param file, exiting ..."
         exit 1
@@ -25,16 +24,34 @@ else
     exit 1
 fi
 
-#### Local Source #### 
-if [[ "$docker_source" == "local" ]]; then
+#### Download from IRODS if needed ####
+if [[ "$docker_source" == "cyverse" ]]; then
+    echo "Using Cyverse Source"
+    #TODO: Add Cyverse Source
+
+# Check the docker source
+elif [[ "$docker_source" == "local" ]]; then
     echo "Using Local Source"
 
-
-#### Cyverse Source #### 
-elif [[ "$docker_source" == "cyverse" ]]; then
-    echo "Using IRODS"
-
 else
-    echo "Unknown source: $docker_source"
+    echo "Unknown Docker Source"
     exit 1
 fi
+
+# Check that the image exists
+image_file=$(find "$data_set_path" -type f \( -iname "*.tif" -o -iname "*.tiff" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \))
+
+if [[ -f "$image_file" ]]; then
+    echo "Image File Found at: $image_file"
+    # Update the param file with the image path
+    jq '(.ortho_path) = "'$image_file'"' "$param_file" > "$data_set_path/final_params.json"
+
+else
+    echo "Image file not found, please double check directory/naming."
+    exit 1
+fi
+
+# Change the output directory in the final params file
+jq '(.ouput_directory) = "'$data_set_path'"' "$data_set_path/final_params.json" > "$data_set_path/final_params.json"
+
+# Run the plot finder
