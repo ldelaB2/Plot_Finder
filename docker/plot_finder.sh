@@ -38,7 +38,7 @@ if [[ "$docker_source" == "cyverse" ]]; then
 
     # Download the image
     irods_img_path=$(jq -r '.IRODS_image_path' "$param_file")
-    iget -K -r -T --retries 5 -X input_checkpoint_file $irods_img_path .
+    iget -K -r -T --retries 5 -X "$data_set_path/input_checkpoint_file" $irods_img_path "$data_set_path"
     echo "Downloaded Image from Cyverse"
 
 # Check the docker source
