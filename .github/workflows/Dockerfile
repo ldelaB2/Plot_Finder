@@ -21,7 +21,7 @@ RUN git clone https://github.com/ldelaB2/Plot_Finder.git /plot_finder && \
 
 # Install IRODS and make scripts executable
 RUN chmod +x /plot_finder/docker/install_iRODS.sh && \
-    chmod +x /plot_finder/docker/download_and_run.sh && \
+    chmod +x /plot_finder/docker/download_from_cyverse.sh && \
     chmod +x /plot_finder/docker/authenticate_irods.sh && \
     /plot_finder/docker/install_iRODS.sh && \
     chmod -R a+rwx /plot_finder

@@ -12,7 +12,7 @@ irods_img_path=$(jq -r '.input_path' $(basename $IRODS_PATH))
 irods_output_path=$(jq -r '.output_path' $(basename $IRODS_PATH))
 
 # Downloading the image
-iget -K -r -T --retries 5 -X input_checkpoint_file $irods_img_path .
+
 
 # Update img_path and param file
 local_img_path="$(pwd)/$(basename $irods_img_path)"

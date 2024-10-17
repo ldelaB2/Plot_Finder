@@ -36,6 +36,10 @@ if [[ "$docker_source" == "cyverse" ]]; then
     source /plot_finder/docker/authenticate_irods.sh
     echo "Completed Authentication with Cyverse"
 
+    # Download the image
+    irods_img_path=$(jq -r '.IRODS_image_path' "$param_file")
+    iget -K -r -T --retries 5 -X input_checkpoint_file $irods_img_path .
+    echo "Downloaded Image from Cyverse"
 
 # Check the docker source
 elif [[ "$docker_source" == "local" ]]; then
