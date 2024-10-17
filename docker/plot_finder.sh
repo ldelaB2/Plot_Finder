@@ -27,7 +27,15 @@ fi
 #### Download from IRODS if needed ####
 if [[ "$docker_source" == "cyverse" ]]; then
     echo "Using Cyverse Source"
-    #TODO: Add Cyverse Source
+    export IRODS_HOST=$(jq -r '.IRODS_HOST' "$param_file")
+    export IRODS_PORT=$(jq -r '.IRODS_PORT' "$param_file")
+    export IRODS_ZONE=$(jq -r '.IRODS_ZONE' "$param_file")
+    export IRODS_USER_NAME=$(jq -r '.IRODS_USER_NAME' "$param_file")
+    export IRODS_PASSWORD=$(jq -r '.IRODS_PASSWORD' "$param_file")
+
+    source /plot_finder/docker/authenticate_irods.sh
+    echo "Completed Authentication with Cyverse"
+
 
 # Check the docker source
 elif [[ "$docker_source" == "local" ]]; then
@@ -53,3 +61,4 @@ fi
 
 
 # Run the plot finder
+python3 /plot_finder/scripts/main.py "$data_set_path/final_params.json"
