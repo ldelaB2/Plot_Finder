@@ -7,6 +7,7 @@ class pf_params:
     def __init__(self, default_param_path, user_param_path, logger):
         self.logger = logger
         self.user_params = self.read_params(user_param_path)
+        self.user_params["output_directory"] = os.path.dirname(user_param_path)
         self.default_params = self.read_params(default_param_path)
         self.create_params()
         

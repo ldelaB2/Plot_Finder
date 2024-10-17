@@ -1,5 +1,5 @@
 from classes.plot_finder_job import plot_finder_job
-import os, sys
+import sys
 
 def main(param_path):
     job = plot_finder_job(param_path)
@@ -8,8 +8,8 @@ def main(param_path):
     return
     
 if __name__ == '__main__':
-    #param_path = sys.argv[1]
-    param_path = '/Users/willdelabretonne/Desktop/pf_test/param.json'
+    param_path = sys.argv[1]
+    #param_path = '/Users/willdelabretonne/Desktop/pf_test/final_params.json'
     main(param_path)
     
     exit(0)
