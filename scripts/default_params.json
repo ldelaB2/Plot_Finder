@@ -61,6 +61,16 @@
     "neighbor_radi": 2,
     "optimization_iteration": 5,
 
+    "_comment": "Docker Parameters",
+    "docker_source": "local",
+    "IRODS_HOST": null,
+    "IRODS_PORT": null,
+    "IRODS_ZONE": null,
+    "IRODS_USER_NAME": null,
+    "IRODS_PASSWORD": null,
+    "IRODS_PATH": null,
+
+
     "_commment": "Internal Parameters (Do not change)",
     "meta_data": null,
     "image_name": null,
