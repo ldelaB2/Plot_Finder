@@ -2,7 +2,6 @@ import numpy as np
 import cv2 as cv
 from PIL import Image
 import matplotlib
-matplotlib.use('Qt5Agg')
 
 from matplotlib import pyplot as plt
 

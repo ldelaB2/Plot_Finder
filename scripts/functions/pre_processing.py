@@ -2,7 +2,6 @@ import numpy as np
 import cv2 as cv
 from functions.general import bindvec
 from matplotlib import pyplot as plt
-from sklearn.preprocessing import PolynomialFeatures
 from functions.general import bindvec
 from pyproj import Transformer, CRS
 from functions.image_processing import build_path
