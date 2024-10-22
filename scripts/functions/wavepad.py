@@ -1,65 +1,17 @@
 import cv2 as cv
 import numpy as np
-from scipy.optimize import dual_annealing
-from scipy.stats import poisson
-from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('MacOSX')
+import matplotlib.pyplot as plt
+
 from scipy.interpolate import LSQUnivariateSpline
 
 from functions.general import find_consecutive_in_range
 from functions.image_processing import find_correct_sized_obj
+from functions.general import bindvec
+import multiprocessing as mp
+import time
 
-def hist_filter_wavepad(wavepad):
-    def model_function(x, lambda1, lambda2, p):
-        left_dist = p * poisson.pmf(x, mu = lambda1) 
-        right_dist = (1 - p) * poisson.pmf(255 - x, mu = lambda2)
-        total_dist = left_dist + right_dist
-        return total_dist
-    
-    def calc_prob(x, lambda1, lambda2, p):
-        left_dist = p * poisson.pmf(x, mu = lambda1) 
-        right_dist = (1 - p) * poisson.pmf(255 - x, mu = lambda2)
-        total_dist = left_dist + right_dist
-        
-        left_prob = np.where(total_dist > 0, left_dist / total_dist, 0)
-        right_prob = np.where(total_dist > 0, right_dist / total_dist, 0)
-        return left_prob, right_prob
-    
-    def objective_function(params, bin_centers, pixels_hist):
-        prob_dist = model_function(bin_centers, *params)
-        dist = - np.sum(pixels_hist * np.log(prob_dist + 1e-10))
-        return dist
-    
-    pixels = wavepad.reshape(-1)
-    pixels_hist, _ = np.histogram(pixels, bins = 256, density=True)
-    bin_left_edge = np.arange(0, 256, 1)
-
-    bounds = [(0,1), (0,1), (0,1)]
-    results = dual_annealing(objective_function, bounds, args=(bin_left_edge, pixels_hist), maxiter = 1000)
-    opt_params = results.x
-
-    # Compute the probability of each point
-    point_left_prob, point_right_prob = calc_prob(pixels, *opt_params)
-    binary_wavepad = np.where(point_left_prob >= point_right_prob, 0, 1)
-
-    # Create the wavepad
-    binary_wavepad = binary_wavepad.reshape(wavepad.shape)
-
-    return binary_wavepad
-
-def filter_wavepad(wavepad, logger, method = "otsu"):
-    if method == "otsu":
-        _, binary_wavepad = cv.threshold(wavepad, 0, 1, cv.THRESH_OTSU)
-        logger.info("Otsu Thresholding Complete")
-
-    elif method == "hist":
-        binary_wavepad = hist_filter_wavepad(wavepad).astype(np.uint8)
-        logger.info("Histogram Thresholding Complete")
-        
-    else:
-        logger.error("Invalid Wavepad Filtering Method")
-        exit()
-
-    return binary_wavepad
 
 def trim_boarder(img, direction, logger):
     if direction == "range":
@@ -181,28 +133,84 @@ def impute_skel(skel, direction, logger):
 
     return skel
 
-def process_wavepad( wavepad, poly_degree, direction, min_obj_size, closing_iterations, logger):
-    # Filter the wavepad
-    filtered_wavepad = filter_wavepad(wavepad, logger)
+def process_range_wavepad(wavepad, params, logger):
+    num_cores = params["num_cores"]
+
+    # Invert the wavepad
+    wavepad = 255 - wavepad
+
+    logger.info("Starting to Processing Range wavepad")
+    start_time = time.time()
+    with mp.Pool(num_cores) as pool:
+        fft_results = pool.map(wavepad_worker, [wavepad[:, i] for i in range(wavepad.shape[1])])
+
+    logger.info(f"FFT Generation Time (s): {np.round(time.time() - start_time, 2)}")
+
+    fft_wavepad = np.column_stack(fft_results)
+
+    # Compute the expected signal in pixels
+    gsd = params["GSD"]
+    range_spacing_cm = params["implied_range_spacing_ft"] * 30.48
+    pixel_signal = np.round(range_spacing_cm / gsd).astype(int)
+    signal_freq = np.round(wavepad.shape[0] / pixel_signal).astype(int)
+    
+    # Find the mean amplitude of the signal
+    mean_amp = np.mean(np.abs(fft_wavepad), axis = 1)
+
+    # Compute the frequency bounds
+    lower_bound = (signal_freq * .75).astype(int)
+    upper_bound = (signal_freq * 1.25).astype(int)
+
+    # Create the first frequency mask
+    freq_mask = np.zeros_like(mean_amp)
+    center = len(mean_amp) // 2
+    freq_mask[(center + lower_bound):(center + upper_bound)] = 1
+
+    # Filter the amplitude    
+    filtered_amp = mean_amp * freq_mask
+
+    # Get the two largest signals
+    signal = np.argsort(filtered_amp)[::-1][:1]
+    
+    # Create the final signal mask
+    final_mask = np.zeros_like(mean_amp)
+    final_mask[signal] = 1
+
+    def range_filter(fft_signal):
+        filtered_amp = np.abs(fft_signal) * final_mask
+        filtered_angle = np.angle(fft_signal) * final_mask
+        spacial_wave = filtered_amp * np.exp(1j * filtered_angle)
+        spacial_wave = np.real(np.fft.irfft(np.fft.ifftshift(spacial_wave)))
+        spacial_wave = np.round(spacial_wave).astype(np.int16)
+        return spacial_wave
+    
+    fft_wavepad = np.apply_along_axis(range_filter, 0, fft_wavepad)
+    fft_wavepad = np.round(255 * bindvec(fft_wavepad)).astype(np.uint8)
+
+    logger.info(f"FFT total time (s): {np.round(time.time() - start_time, 2)}")
+
+    # Binary threshold
+    _, binary_wavepad = cv.threshold(fft_wavepad, 0, 1, cv.THRESH_OTSU)
+
+    ones = np.sum(np.where(binary_wavepad == 1))
+    zeros = np.sum(np.where(binary_wavepad == 0))
+
+    # Invert if needed
+    if ones > zeros:
+        binary_wavepad = 1 - binary_wavepad
+
+    # Find the correct sized objects
+    min_obj_size = params["min_obj_size_range"]
+    poly_degree = params["poly_deg_range"]
+    direction = "range"
 
     # Trim the boarder
-    trimmed_wavepad = trim_boarder(filtered_wavepad, direction, logger)
+    trimmed_wavepad = trim_boarder(binary_wavepad, direction, logger)
 
-    # Close the wavepad
-    if direction == "range":
-        logger.info(f"Closing Wavepad with {closing_iterations} iterations")
-        kernel = np.ones((5,5), np.uint8)
-        closed_wavepad = cv.morphologyEx(trimmed_wavepad, cv.MORPH_CLOSE, kernel, iterations = closing_iterations)
-    else:
-        logger.info(f"Erroding Wavepad with {closing_iterations} iterations")
-        kernel = np.ones((3,3), np.uint8)
-        closed_wavepad = cv.morphologyEx(trimmed_wavepad, cv.MORPH_ERODE, kernel, iterations = closing_iterations)
-        closed_wavepad = cv.morphologyEx(closed_wavepad, cv.MORPH_CLOSE, kernel, iterations = closing_iterations)
-
-    # Find correct sized objects
+     # Find correct sized objects
     logger.info(f"Finding Correct Sized Objects with min size: {min_obj_size}")
-    correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(closed_wavepad, min_obj_size)
-    logger.info(f"Average Object Area: {avg_obj_area} for {direction} wavepad")
+    correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(trimmed_wavepad, min_obj_size)
+    logger.info(f"Average Object Area: {np.round(avg_obj_area, 2)} for {direction} wavepad")
 
     # Find the center line
     center_line = find_center_line(correct_sized_wavepad, poly_degree, direction, logger)
@@ -210,4 +218,105 @@ def process_wavepad( wavepad, poly_degree, direction, min_obj_size, closing_iter
     # Impute the skeleton
     imputed_skel = impute_skel(center_line, direction, logger)
 
+    logger.info(f"Total time for range wavepad processing (s): {np.round(time.time() - start_time, 2)}")
+
     return imputed_skel
+
+def process_row_wavepad(wavepad, params, logger):
+    num_cores = params["num_cores"]
+
+    # Invert the wavepad
+    wavepad = 255 - wavepad
+
+    logger.info("Starting to Processing Row wavepad")
+    start_time = time.time()
+    with mp.Pool(num_cores) as pool:
+        fft_results = pool.map(wavepad_worker, [wavepad[i, :] for i in range(wavepad.shape[0])])
+
+    logger.info(f"FFT Generation Time (s): {np.round(time.time() - start_time, 2)}")
+
+    fft_wavepad = np.row_stack(fft_results)
+
+    # Compute the expected signal in pixels
+    gsd = params["GSD"]
+    range_spacing_cm = params["implied_row_spacing_in"] * 2.54
+    pixel_signal = np.round(range_spacing_cm / gsd).astype(int)
+    signal_freq = np.round(wavepad.shape[1] / pixel_signal).astype(int)
+    
+    # Find the mean amplitude of the signal
+    mean_amp = np.mean(np.abs(fft_wavepad), axis = 0)
+
+    # Compute the frequency bounds
+    lower_bound = (signal_freq * .75).astype(int)
+    upper_bound = (signal_freq * 1.25).astype(int)
+
+    # Create the first frequency mask
+    freq_mask = np.zeros_like(mean_amp)
+    center = len(mean_amp) // 2
+    freq_mask[(center + lower_bound):(center + upper_bound)] = 1
+
+    # Filter the amplitude    
+    filtered_amp = mean_amp * freq_mask
+
+    # Get the two largest signals
+    signal = np.argsort(filtered_amp)[::-1][:1]
+
+    # Create the final signal mask
+    final_mask = np.zeros_like(mean_amp)
+    final_mask[signal] = 1
+
+    def row_filter(fft_signal):
+        filtered_amp = np.abs(fft_signal) * final_mask
+        filtered_angle = np.angle(fft_signal) * final_mask
+        spacial_wave = filtered_amp * np.exp(1j * filtered_angle)
+        spacial_wave = np.real(np.fft.irfft(np.fft.ifftshift(spacial_wave)))
+        spacial_wave = np.round(spacial_wave).astype(np.int16)
+        return spacial_wave
+    
+    fft_wavepad = np.apply_along_axis(row_filter, 1, fft_wavepad)
+    fft_wavepad = np.round(255 * bindvec(fft_wavepad)).astype(np.uint8)
+
+    logger.info(f"FFT total time (s): {np.round(time.time() - start_time, 2)}")
+
+    # Binary threshold
+    _, binary_wavepad = cv.threshold(fft_wavepad, 0, 1, cv.THRESH_OTSU)
+
+    ones = np.sum(np.where(binary_wavepad == 1))
+    zeros = np.sum(np.where(binary_wavepad == 0))
+
+    # Invert if needed
+    if ones > zeros:
+        binary_wavepad = 1 - binary_wavepad
+
+    # Find the correct sized objects
+    min_obj_size = params["min_obj_size_row"]
+    poly_degree = params["poly_deg_row"]
+    direction = "row"
+
+    # Trim the boarder
+    trimmed_wavepad = trim_boarder(binary_wavepad, direction, logger)
+
+    # Find correct sized objects
+    logger.info(f"Finding Correct Sized Objects with min size: {min_obj_size}")
+    correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(trimmed_wavepad, min_obj_size)
+    logger.info(f"Average Object Area: {np.round(avg_obj_area, 2)} for {direction} wavepad")
+
+    # Find the center line
+    center_line = find_center_line(correct_sized_wavepad, poly_degree, direction, logger)
+
+    # Impute the skeleton
+    imputed_skel = impute_skel(center_line, direction, logger)
+
+    logger.info(f"Total time for row wavepad processing (s): {np.round(time.time() - start_time, 2)}")
+
+    return imputed_skel
+
+
+def wavepad_worker(signal):
+    signal = signal - np.mean(signal)
+    fft_signal = np.fft.rfft(signal)
+    fft_signal = np.fft.fftshift(fft_signal)
+    return fft_signal
+
+
+    

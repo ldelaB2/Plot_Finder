@@ -8,8 +8,8 @@ def main(param_path):
     return
     
 if __name__ == '__main__':
-    param_path = sys.argv[1]
-    #param_path = '/Users/willdelabretonne/Desktop/pf_test/final_params.json'
+    #param_path = sys.argv[1]
+    param_path = '/Users/willdelabretonne/Desktop/pf_test/final_params.json'
     main(param_path)
     
     exit(0)

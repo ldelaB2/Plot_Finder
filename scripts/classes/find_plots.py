@@ -11,7 +11,7 @@ from classes.model import model, compute_template_image
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
-from functions.wavepad import process_wavepad
+from functions.wavepad import process_range_wavepad, process_row_wavepad
 from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles
 from functions.rect_list import build_rect_list, set_range_row, set_id
 from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check, setup_rect_list
@@ -61,6 +61,7 @@ class find_plots():
             
             # Update the params
             self.params["fine_skip_radi"] = fine_skip_radi
+            logger.info(f"Using fine skip radi of {fine_skip_radi}")
         else:
             logger.info(f"Using fine skip radi of {fine_skip_radi}")
 
@@ -117,16 +118,11 @@ class find_plots():
     def phase_three(self, row_wavepad, range_wavepad):
         # pull the params
         logger = self.loggers.wavepad_processing
-        poly_deg_range = self.params["poly_deg_range"]
-        poly_deg_row = self.params["poly_deg_row"]
-        min_obj_size_range = self.params["min_obj_size_range"]
-        min_obj_size_row = self.params["min_obj_size_row"]
-        closing_iterations = self.params["closing_iterations"]
         img = self.params["gray_img"]
 
         # Process the wavepad
-        range_skel = process_wavepad(range_wavepad, poly_deg_range, "range", min_obj_size_range, closing_iterations, logger)
-        row_skel = process_wavepad(row_wavepad, poly_deg_row, "row", min_obj_size_row, closing_iterations, logger)
+        range_skel = process_range_wavepad(range_wavepad, self.params, logger)
+        row_skel = process_row_wavepad(row_wavepad, self.params, logger)
 
         initial_rect_list, initial_range_cnt, initial_row_cnt, initial_width, initial_height = build_rect_list(range_skel, row_skel, img)
 

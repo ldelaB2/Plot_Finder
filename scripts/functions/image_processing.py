@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
 from functions.general import find_mode
+from PIL import Image
 
 def create_unit_square(width, height):
     # Creating the unit square
@@ -71,13 +72,12 @@ def rotate_img(img, theta):
     inverse_rotation_matrix[1, 2] += (height - new_height) / 2
     
     # Rotate the image
-    if len(img.shape) == 2:
-        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)
-    else:
-        rotated_img = cv.warpAffine(img, rotation_matrix, (new_width,new_height), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = np.zeros(img.shape[2]))
- 
+    img = Image.fromarray(img)
+    img = img.rotate(theta, resample=Image.BICUBIC, expand=True)
+    img = np.array(img)
+    
     # Return the inverse rotation matrix, the rotated g image, and the rotated rgb image
-    return inverse_rotation_matrix, rotation_matrix, rotated_img
+    return inverse_rotation_matrix, rotation_matrix, img
 
 def extract_rectangle(center_x, center_y, theta, width, height, unit_sqr, img):
     theta = np.radians(theta)

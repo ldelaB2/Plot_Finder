@@ -2,11 +2,11 @@ import numpy as np
 import cv2 as cv
 from functions.general import bindvec
 from matplotlib import pyplot as plt
-from functions.general import bindvec
 from pyproj import Transformer, CRS
 from functions.image_processing import build_path
 from classes.sub_image import sub_image
 from matplotlib import pyplot as plt
+from PIL import Image
 
 def compute_GSD(meta_data, logger):
     # Get the current Coordinate Reference System
@@ -54,7 +54,7 @@ def compute_GSD(meta_data, logger):
         units = axis_info.unit_name
 
         if units == 'metre':
-            gsd_cm = np.round((gsd_x + gsd_y) / 2 * 100, 4)
+            gsd_cm = np.round((abs(gsd_x) + abs(gsd_y)) / 2 * 100, 4)
         else:
             logger.critical("Invalid unit detected please convert your image to a coordinate system with units of meters or degrees to use AUTO GSD")
             exit(1)
@@ -68,7 +68,7 @@ def compute_gray_weights(params, logger):
 
 def compute_gray(custom, method, image, invert, logger):
     # convert the img to float32 and read in the grayscale method
-    img = np.copy(image).astype(np.float32)
+    img = np.copy(image).astype(np.uint8)
 
     if custom:
         # Check if the custom method is specified
@@ -135,13 +135,16 @@ def compute_gray(custom, method, image, invert, logger):
             pixel_mat = np.where(valid, numerator / denominator, 0)
 
         elif method == 'GRAY':
-            pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2GRAY)
+            img = Image.fromarray(img)
+            pixel_mat = np.array(img.convert('L'))
 
         elif method == 'LAB':
-            pixel_mat =cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2LAB)[:,:,1]
+            img = Image.fromarray(img)
+            pixel_mat = np.array(img.convert('LAB'))[:,:,1]
 
         elif method == 'HSV':
-            pixel_mat = cv.cvtColor(img.astype(np.uint8), cv.COLOR_RGB2HSV)[:,:,0]
+            img = Image.fromarray(img)
+            pixel_mat = np.array(img.convert('HSV'))[:,:,0]
 
         else:
             logger.critical(f"Invalid grayscale method: {method}")
@@ -178,10 +181,12 @@ def compute_theta(user_params, logger):
 
     # Compute the gray image
     gray_img = compute_gray(False, "GRAY", img, False, logger)
+    gray_img = Image.fromarray(gray_img)
     
     def compute_theta_psnr(theta):
         # Rotate the image
-        rotated_img = cv.warpAffine(gray_img, cv.getRotationMatrix2D((img.shape[1] / 2, img.shape[0] / 2), theta, 1), (img.shape[1], img.shape[0]), flags=cv.INTER_NEAREST, borderMode=cv.BORDER_CONSTANT, borderValue = 0)       
+        rotated_img = gray_img.rotate(theta)
+        rotated_img = np.array(rotated_img)
 
         # compute the signal
         signal = np.mean(rotated_img, axis = 0)
@@ -354,6 +359,9 @@ def compute_signal(user_params, logger):
     logger.info(f"Implied Row Spacing: {implied_row_spacing} in")
     logger.info(f"Implied Range Spacing: {implied_range_spacing} ft")
     logger.info("Finished Processing Sparse Grid")
+
+    user_params["implied_row_spacing_in"] = implied_row_spacing
+    user_params["implied_range_spacing_ft"] = implied_range_spacing
 
     return max_row_sig, max_range_sig
 
