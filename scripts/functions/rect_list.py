@@ -38,9 +38,11 @@ def build_rectangles(range_skel, col_skel):
     num_rows, ld_row, _, _ = cv.connectedComponentsWithStats(dialated_col)
 
     # Find the corner points
-    cp = np.argwhere(dialated_range.astype(bool) & dialated_col.astype(bool))
+    cp = dialated_range.astype(bool) & dialated_col.astype(bool)
+    _, _, stats, centroids  = cv.connectedComponentsWithStats(cp.astype(np.uint8))
+
     # Find the number of clusters
-    num_clusters = (num_ranges - 1) * (num_rows - 1)
+    
 
     kmeans = KMeans(n_clusters = num_clusters, n_init = 100).fit(cp)
     labels = kmeans.labels_

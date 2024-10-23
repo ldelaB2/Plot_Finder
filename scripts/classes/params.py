@@ -147,7 +147,6 @@ class pf_params:
             if img is not None:
                 self.logger.info(f"Reading image at: {self.user_params['ortho_path']}")
                 self.user_params["img_ortho"] = img
-                self.user_params["img_ortho_shape"] = img.shape
             else:
                 self.logger.critical(f"Error reading image at: {self.user_params['ortho_path']}. Image is None. Exiting...")
                 exit(1)
@@ -217,7 +216,8 @@ class pf_params:
             self.logger.info(f"Using user defined rotation angle: {user_choice}")
             theta = user_choice
 
-        self.user_params["inverse_rotation_matrix"], self.user_params["rotation_matrix"], self.user_params["img_ortho"] = rotate_img(self.user_params["img_ortho"], theta) 
+        self.user_params["inverse_rotation_matrix"], self.user_params["rotation_matrix"], self.user_params["img_ortho"] = rotate_img(self.user_params["img_ortho"], theta)
+        self.user_params["img_ortho_shape"] = self.user_params["img_ortho"].shape
         self.logger.info("Finished rotating image")
         
 
