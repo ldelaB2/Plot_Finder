@@ -36,39 +36,28 @@ def build_rectangles(range_skel, col_skel):
 
     num_ranges, ld_range, _, _ = cv.connectedComponentsWithStats(dialated_range)
     num_rows, ld_row, _, _ = cv.connectedComponentsWithStats(dialated_col)
+    corner_points = np.where((ld_range != 0) & (ld_row != 0))
 
-    # Find the corner points
-    cp = dialated_range.astype(bool) & dialated_col.astype(bool)
-    _, _, stats, centroids  = cv.connectedComponentsWithStats(cp.astype(np.uint8))
-
-    # Find the number of clusters
-    
-
-    kmeans = KMeans(n_clusters = num_clusters, n_init = 100).fit(cp)
-    labels = kmeans.labels_
-    centroids = kmeans.cluster_centers_
-    cp = np.round(centroids).astype(int)
-
-
+    def find_point(e, k):
+        indx = np.where((ld_range[corner_points] == e) & (ld_row[corner_points] == k))
+        points = np.array([corner_points[0][indx], corner_points[1][indx]])
+        points = points.T
+        center = np.round(np.mean(points, axis = 0)).astype(int)
+        return center
+        
     rect = []
     for e in range(1, num_ranges - 1):
-        # Find the top and bottom points
-        top_points = cp[np.where(ld_range[cp[:,0], cp[:,1]] == e)[0]]
-        bottom_points = cp[np.where(ld_range[cp[:,0], cp[:,1]] == e + 1)[0]]
+        for k in range(1, num_rows - 1):
+            top_left = find_point(e, k)
+            top_right = find_point(e, k + 1)
+            bottom_left = find_point(e + 1, k)
+            bottom_right = find_point(e + 1, k + 1)
 
-        # Sort the points based on the x values
-        top_points = top_points[np.argsort(top_points[:,1])]
-        bottom_points = bottom_points[np.argsort(bottom_points[:,1])]
-
-        for k in range(num_rows - 2):
-            top_left = top_points[k,:]
-            top_right = top_points[k + 1,:]
-            bottom_left = bottom_points[k,:]
-            bottom_right = bottom_points[k + 1,:]
             points = [top_left, top_right, bottom_left, bottom_right]
             tmp_list = four_2_five_rect(points)
             tmp_list = np.append(tmp_list, [e, k])
             rect.append(tmp_list)
+
     
     num_ranges = num_ranges - 2
     num_rows = num_rows - 2

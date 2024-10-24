@@ -13,7 +13,7 @@ def optimize_rect_list_xy(rect_list):
         scores.append(rect.score)
         rect.compute_template_position()
 
-    score = np.mean(scores)
+    score = np.median(scores)
 
     return score
 
