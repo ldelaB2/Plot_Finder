@@ -3,8 +3,47 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 
 from functions.display import disp_rectangles
-from classes.model import compute_template_image
+from functions.general import bindvec
 
+def compute_model(model_size, rect_list, logger):
+    logger.info(f"Computing Initial Model with {len(rect_list)} rectangles")
+  
+    initial_model = np.zeros(model_size)
+    for rect in rect_list:
+        sub_img = rect.create_sub_image()
+        if sub_img.shape != model_size:
+            sub_img = cv.resize(sub_img, model_size[::-1])
+
+        model += sub_img
+
+    model = model / len(rect_list)
+    model = np.round(255 * bindvec(model)).astype(np.uint8)
+
+    _, threshold_model = cv.threshold(initial_model, 0, 1, cv.THRESH_OTSU)
+
+    num_obj, labeled, stats, centroids = cv.connectedComponentsWithStats(threshold_model)
+
+    correct_object = np.argmax(stats[1:, 4]) + 1
+    model_center = centroids[correct_object]
+    model_center = np.round(model_center).astype(int)
+
+    hort_shift = model_size[1] // 2 - model_center[0]
+    vert_shift = model_size[0] // 2 - model_center[1]
+
+    logger.info(f"Horizontal Shift for Initial Model: {hort_shift}")
+    logger.info(f"Vertical Shift for Initial Model: {vert_shift}")
+
+    translation_matrix = np.float32([[1, 0, hort_shift], [0, 1, vert_shift]])
+
+    translated_model = cv.warpAffine(initial_model, translation_matrix, (model_size[1], model_size[0]))
+
+    return translated_model
+
+def compute_template_image(model, base_img):
+    results = cv.matchTemplate(base_img, model, cv.TM_CCOEFF_NORMED)
+    results = -results
+
+    return results
 
 def optimize_rect_list_xy(rect_list):
     scores = []
@@ -110,6 +149,9 @@ def match_template_t(args):
 
     return np.array(output)
 
+def match_t_worker(args):
+    rect, t_range, model = args
+    sub_image = rect.create_sub_image()
 
 
 

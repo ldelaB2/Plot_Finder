@@ -67,112 +67,80 @@ def compute_GSD(meta_data, logger):
     return gsd_cm
 
 def compute_gray_weights(params, logger):
-    row_signal, range_signal = compute_signal(params, logger)
+    row_signal, range_signal  = compute_signal(params, logger)
 
+    # Update the params
+    params["calculated_row_signal"] = row_signal
+    params["calculated_range_signal"] = range_signal
+
+    # Pull the parmas
     img = params["img_ortho"]
     num_sub_images = params["auto_gray_num_subimages"]
     box_size = params["box_radi"]
-    gray_features = params["auto_gray_features"]
-    features_degree = params["auto_gray_poly_features_degree"]
+    gray_methods = params["auto_gray_methods"]
 
     center_col = img.shape[1] // 2
     max_row = img.shape[0] - box_size[0] - 1
     min_row = box_size[0] + 1
     row_samples = np.random.randint(min_row, max_row, num_sub_images)
 
-    features = []
-    for row in row_samples:
-        subI = sub_image(img, box_size, (center_col, row))
-        subI = subI.image
-        sub_features = []
-        for feature in gray_features:
-            tmp = compute_gray(False, feature, subI, False, logger)
-            tmp = tmp.flatten()
-            sub_features.append(tmp)
-        
-        sub_features = np.array(sub_features)
-        features.append(sub_features)
-
-    # Stack the features
-    sub_image_features = np.hstack(features)
-    sub_image_features = sub_image_features.T
-
-    # Create the polynomial features
-    poly = PolynomialFeatures(features_degree)
-    poly_features = poly.fit_transform(sub_image_features)
-
     mask = np.zeros((box_size[1] * 2))
     mask[row_signal] = 1
     signal_index = np.where(mask == 1)[0]
     noise_index = np.where(mask == 0)[0]
-    
-    def objective(weights):
-        test_img = np.dot(poly_features, weights)
-        test_img = np.round(255 * bindvec(test_img)).astype(np.uint8)
-        test_img = np.reshape(test_img, (num_sub_images, box_size[0] * 2, box_size[1] * 2))
 
-        score = 0
-        for e in range(num_sub_images):
-            sub_image_val = test_img[e, :, :]
-            signal = np.mean(sub_image_val, axis = 0)
-            signal = signal - np.mean(signal)
-            fft = np.fft.fft(signal)
-            fft = np.fft.fftshift(fft)
-            amp = np.abs(fft)
-            signal = np.mean(amp[signal_index])
-            noise = np.mean(amp[noise_index])
-            psnr = 10 * np.log10(signal**2 / noise**2)
+    def compute_psnr(img):
+        signal = np.mean(img, axis = 0)
+        signal = signal - np.mean(signal)
+        fft = np.fft.fft(signal)
+        fft = np.fft.fftshift(fft)
+        amp = np.abs(fft)
+        signal = np.mean(amp[signal_index])
+        noise = np.mean(amp[noise_index])
+        psnr = 10 * np.log10(signal**2 / noise**2)
 
-            score -= psnr
+        return psnr
+
+    scores = []
+    for row in row_samples:
+        subI = sub_image(img, box_size, (center_col, row))
+        subI = subI.image
+        img_scores = []
         
-        return score
+        for method in gray_methods:
+            gray_img = compute_gray(False, method, subI, False, logger)
+            img_scores.append(compute_psnr(gray_img))
 
-    bounds = [(-1, 1)] * poly_features.shape[1]
-    results = dual_annealing(objective, bounds, maxiter = 1)
-    lower_bound = [-1] * poly_features.shape[1]
-    upper_bound = [1] * poly_features.shape[1]
-    result = pso(objective, lower_bound, upper_bound, swarmsize= 100, maxiter = 10)
-    print("FINISHED")
-    
-    gray_weights = results.x
-    gray_img = np.zeros((img.shape[0], img.shape[1])).astype(np.float32)
-    block_size = 1000
-    xs = np.arange(0, img.shape[1], block_size).astype(int)
-    ys = np.arange(0, img.shape[0], block_size).astype(int)
+        scores.append(img_scores)
 
-    if xs[-1] != img.shape[1]:
-        xs = np.append(xs, img.shape[1])
-    if ys[-1] != img.shape[0]:
-        ys = np.append(ys, img.shape[0])
+    scores = np.array(scores)
+    mean_score = np.mean(scores, axis = 0)
+    best_method = gray_methods[np.argmax(mean_score)]
+    best_score = np.round(np.max(mean_score), 2)
 
-    for indx in range(len(xs) - 1):
-        for indy in range(len(ys) - 1):
-            sub_image_val = img[ys[indy]:ys[indy + 1], xs[indx]:xs[indx + 1], :]
-            sub_image_shape = sub_image_val.shape[:2]
-            sub_features = []
-            for feature in gray_features:
-                tmp = compute_gray(False, feature, sub_image_val, False, logger)
-                tmp = tmp.flatten()
-                sub_features.append(tmp)
-            
-            sub_features = np.array(sub_features)
-            poly_features = poly.fit_transform(sub_features.T)
-            gray_sub_img = np.dot(poly_features, gray_weights)
-            gray_sub_img = np.reshape(gray_sub_img, sub_image_shape)
-    
-            gray_img[ys[indy]:ys[indy + 1], xs[indx]:xs[indx + 1]] = gray_sub_img
-    
-    gray_img = np.round(255 * bindvec(gray_img)).astype(np.uint8)
-            
+    # Check for inversion
+    zero_cnt = 0
+    one_cnt = 0
+    images = None
+    for row in row_samples:
+        subI = sub_image(img, box_size, (center_col, row))
+        subI = subI.image
+        gray_img = compute_gray(False, best_method, subI, False, logger)
+        if images is None:
+            images = gray_img
+        else:
+            images = np.vstack((images, gray_img))
 
+    _, binary_image = cv.threshold(images, 0, 1, cv.THRESH_OTSU)
+    zero_cnt = np.sum(binary_image == 0)
+    one_cnt = np.sum(binary_image == 1)
 
-    test = np.reshape(sub_image_features, (num_sub_images, box_size[0] * 2, box_size[1] * 2, len(gray_features)))
+    if one_cnt > zero_cnt:
+        invert = True
+    else:
+        invert = False
 
-    # Find the size of the sub images
-
-    logger.info("Not implemented yet")
-    #TODO implement this function
-    return
+    return best_method, invert, best_score
 
 def compute_gray(custom, method, image, invert, logger):
     # convert the img to float32 and read in the grayscale method
@@ -193,11 +161,7 @@ def compute_gray(custom, method, image, invert, logger):
         pixel_mat = np.where(np.isfinite(pixel_mat), pixel_mat, 0)
 
     else:
-        if method == 'AUTO':
-            print("test")
-
-
-        elif method == 'BI':
+        if method == 'BI':
             pixel_mat = np.sqrt((img[:,:,0] ** 2 + img[:,:,1] ** 2 + img[:,:,2] ** 2)/3)
 
         elif method == 'SCI':

@@ -164,21 +164,17 @@ class pf_params:
             valid_method = ['AUTO', 'BI', 'SCI', 'GLI', 'HI', 'NGRDI', 'SI', 'VARI', 'BGI','GRAY','LAB','HSV']
 
             if gray_method not in valid_method:
-                self.logger.warning(f"Invalid grayscale method: {gray_method}. Using LAB")
-                gray_method = 'LAB'
+                self.logger.warning(f"Invalid grayscale method: {gray_method}. Using AUTO")
+                gray_method = 'AUTO'
             else:
                 self.logger.info(f"Using grayscale method: {gray_method}")
 
             if gray_method == 'AUTO':
-                self.logger.info(f"Using grayscale features of {self.user_params['auto_gray_features']}")
-                self.logger.info(f"Using polynomial features of degree {self.user_params['auto_gray_poly_features_degree']}")
-
-                if self.user_params["recompute_auto_gray_weights"] == True or self.user_params["auto_gray_weights"] is None:
-                    self.logger.info("Computing auto gray weights")
-                    gray_weights = compute_gray_weights(self.user_params, self.logger)
-                    self.logger.info(f"Computed gray weights: {gray_weights}")
-                    self.user_params["auto_gray_weights"] = gray_weights
-                    self.user_params["gray_scale_invert"] = False
+                self.logger.info("Computing auto gray method")
+                gray_method, invert, score = compute_gray_weights(self.user_params, self.logger)
+                self.logger.info(f"Optimal Gray Method: {gray_method} with score: {score}")
+                self.user_params["gray_scale_invert"] = invert
+                self.user_params["gray_scale_method"] = gray_method
 
         if self.user_params["gray_scale_invert"] == True:
             self.logger.info("Gray scale will be inverted")

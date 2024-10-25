@@ -12,9 +12,7 @@
     "gray_scale_invert": false,
 
     "_comment": "Parameters for auto gray scale method",
-    "auto_gray_poly_features_degree": 1,
-    "auto_gray_features":["HSV", "GRAY", "LAB"],
-    "recompute_auto_gray_weights": false,
+    "auto_gray_methods": ["BI", "SCI", "GLI", "HI", "NGRDI", "SI", "VARI", "BGI","GRAY","LAB","HSV"],
     "auto_gray_num_subimages": 5,
     
     "_comment": "Processing parameters",
@@ -54,8 +52,8 @@
     "x_radi": 0.25,
     "y_radi": 0.15,
     "t_radi": 5,
-    "shrink_width": 0.1,
-    "shrink_height": 0.1,
+    "shrink_width": 0.25,
+    "shrink_height": 0.25,
     "neighbor_radi": 2,
     "optimization_iteration": 5,
 

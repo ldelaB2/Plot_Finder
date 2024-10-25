@@ -6,8 +6,8 @@ from multiprocessing import shared_memory
 import time
 
 from classes.sub_image import sub_image
-from classes.model import model, compute_template_image
 
+from functions.optimization import compute_model, compute_template_image
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
@@ -29,7 +29,11 @@ class find_plots():
     def phase_one(self):
         # Phase one calcualte the optimal signal
         logger = self.loggers.fft_processing
-        row_signal, range_signal = compute_signal(self.params, logger)
+        try:
+            row_signal = self.params["calculated_row_signal"]
+            range_signal = self.params["calculated_range_signal"]
+        except:
+            row_signal, range_signal = compute_signal(self.params, logger)
 
         # Box size
         box_radi = self.params["box_radi"]
@@ -132,7 +136,7 @@ class find_plots():
 
         # Compute the initial model
         model_size = (initial_height, initial_width)
-        initial_model = model(model_size).compute_initial_model(initial_rect_list, logger)
+        initial_model = compute_model(model_size, initial_rect_list, logger)
 
         user_models = {}
         user_models["initial_model"] = initial_model

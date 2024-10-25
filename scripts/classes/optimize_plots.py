@@ -7,9 +7,8 @@ import os
 from functions.image_processing import four_2_five_rect
 from functions.rect_list import build_rect_list_points, set_id
 from functions.display import disp_rectangles
-from classes.model import model
 import time
-from functions.optimization import optimize_xy, optimize_t, optimize_hw
+from functions.optimization import optimize_xy, optimize_t, optimize_hw, compute_model
 from functions.rect_list_processing import distance_optimize
 from functions.general import create_shapefile
 
@@ -106,7 +105,7 @@ class optimize_plots:
         if existing_models:
             optimization_model = existing_models["initial_model"]
         else:
-            optimization_model = model(model_size).compute_initial_model(initial_rect_list, self.logger)
+            optimization_model = compute_model(model_size, initial_rect_list, logger)
 
         # Get the optimization params
         x_radi = self.params["x_radi"]
@@ -133,7 +132,7 @@ class optimize_plots:
             optimized_rect_list = distance_optimize(optimized_rect_list, neighbor_radi, kappa, logger)
 
             # Update the model
-            optimization_model = model(model_size).compute_mean_model(optimized_rect_list)
+            optimization_model = compute_model(model_size, optimized_rect_list, logger)
             
             end_time = time.time()
             e_time = np.round(end_time - start_time, 2)
