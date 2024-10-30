@@ -1,7 +1,6 @@
 import numpy as np
 import cv2 as cv
 from functions.general import bindvec
-from matplotlib import pyplot as plt
 from pyproj import Transformer, CRS
 from functions.image_processing import build_path
 from classes.sub_image import sub_image

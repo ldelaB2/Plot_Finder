@@ -1,10 +1,10 @@
 import numpy as np
-from matplotlib import pyplot as plt
+from PIL import Image
 
 from functions.image_processing import extract_rectangle, five_2_four_rect
 from functions.image_processing import create_unit_square
 from functions.optimization import compute_score
-from PIL import Image
+
 
 class rectangle:
     def __init__(self, rect):

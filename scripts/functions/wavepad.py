@@ -1,18 +1,13 @@
 import cv2 as cv
 import numpy as np
-import matplotlib
-matplotlib.use('MacOSX')
-import matplotlib.pyplot as plt
-
+import multiprocessing as mp
+import time
 from scipy.interpolate import LSQUnivariateSpline
-from functions.display import dialate_skel, save_results
 
+from functions.display import dialate_skel, save_results
 from functions.general import find_consecutive_in_range
 from functions.image_processing import find_correct_sized_obj
 from functions.general import bindvec
-import multiprocessing as mp
-import time
-
 
 def trim_signal(signal, logger):
     mean_signal = np.mean(signal[signal != 0]).astype(int)

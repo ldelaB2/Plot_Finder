@@ -1,4 +1,3 @@
-from matplotlib import pyplot as plt
 import numpy as np
 import multiprocessing as mp
 import os
@@ -12,7 +11,7 @@ from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
 from functions.wavepad import process_range_wavepad, process_row_wavepad
-from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles, save_results
+from functions.display import save_results
 from functions.rect_list import build_rect_list, set_range_row, set_id
 from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check
 

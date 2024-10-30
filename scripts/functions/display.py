@@ -4,8 +4,6 @@ from PIL import Image
 from matplotlib import pyplot as plt
 import os
 
-from functions.general import bindvec
-
 def flatten_mask_overlay(image, mask, alpha = 0.5):
     """
     This function overlays a mask on an image with a specified transparency.

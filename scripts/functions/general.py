@@ -1,8 +1,6 @@
 import numpy as np
-import multiprocessing
 from shapely.geometry import Polygon
 import geopandas as gpd
-import os
 
 def bindvec(in_array):
     """

@@ -1,6 +1,5 @@
 import numpy as np
 import geopandas as gpd
-from matplotlib import pyplot as plt
 import os
 import time
 

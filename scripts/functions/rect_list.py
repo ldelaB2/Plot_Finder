@@ -1,7 +1,6 @@
 import numpy as np
 import cv2 as cv
 from sklearn.cluster import KMeans
-from matplotlib import pyplot as plt
 
 from classes.rectangles import rectangle
 from functions.image_processing import four_2_five_rect
