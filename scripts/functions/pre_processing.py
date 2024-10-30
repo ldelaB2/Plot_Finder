@@ -7,6 +7,8 @@ from classes.sub_image import sub_image
 from PIL import Image
 import multiprocessing as mp
 from functions.image_processing import compute_points, create_unit_square
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
 
 def compute_GSD(meta_data, logger):
@@ -63,32 +65,70 @@ def compute_GSD(meta_data, logger):
     return gsd_cm
 
 def compute_gray_weights(params, logger):
-    row_signal, range_signal  = compute_signal(params, logger)
-
-    # Update the params
-    params["calculated_row_signal"] = row_signal
-    params["calculated_range_signal"] = range_signal
+    # Compute the signal pixel
+    gsd = params["GSD"]
+    row_spacing_cm = params["row_spacing_in"] * 2.54
+    signal_pixel = np.round(row_spacing_cm / gsd).astype(int)
 
     # Pull the parmas
     img = params["img_ortho"]
-    num_sub_images = params["auto_gray_num_subimages"]
-    box_size = params["box_radi"]
+    num_sub_images = params["auto_gray_num_samples"]
     gray_methods = params["auto_gray_methods"]
 
-    center_col = img.shape[1] // 2
-    max_row = img.shape[0] - box_size[0] - 1
-    min_row = box_size[0] + 1
-    row_samples = np.random.randint(min_row, max_row, num_sub_images)
+    sub_img_radi = signal_pixel * 4
 
-    mask = np.zeros((box_size[1] * 2))
-    mask[row_signal] = 1
+    if sub_img_radi > (img.shape[1] // 2):
+        logger.warning(f"Row signal is too small. Using Full Image Width")
+        sub_img_radi = img.shape[1] // 2 - 1
+        expected_signal_freq = np.round(sub_img_radi / signal_pixel).astype(int)
+    else:
+        expected_signal_freq = 8
+
+    # Create sub image size
+    sub_img_width = 2 * sub_img_radi
+
+    # Check the height
+    max_row = img.shape[0] - sub_img_radi - 1
+    min_row = sub_img_radi + 1
+
+    if min_row <= 0 or max_row >= img.shape[0]:
+        sub_img_height = img.shape[0] - 1 // num_sub_images + 3
+        min_row = sub_img_height + 1
+        max_row = img.shape[0] - sub_img_height - 1
+    else:
+        sub_img_height = sub_img_radi
+
+
+
+    sub_img_shape = [sub_img_height, sub_img_radi]
+
+    center_col = img.shape[1] // 2
+    
+    row_samples = np.linspace(min_row, max_row, num_sub_images).astype(int)
+
+    # Find the mask size
+    test = np.zeros((sub_img_width))
+    fft = np.fft.rfft(test)
+    mask = np.zeros(fft.shape).astype(np.uint8)
+    
+    # Create the mask
+    center = len(fft) // 2
+    mask[center + expected_signal_freq] = 1
+    
+    # Dilate
+    kernel = np.ones((1,3), np.uint8)
+    mask = mask.reshape(1, -1)
+    mask = cv.dilate(mask, kernel, iterations = 1)
+
+    mask = mask.flatten()
+
     signal_index = np.where(mask == 1)[0]
     noise_index = np.where(mask == 0)[0]
 
     def compute_psnr(img):
         signal = np.mean(img, axis = 0)
         signal = signal - np.mean(signal)
-        fft = np.fft.fft(signal)
+        fft = np.fft.rfft(signal)
         fft = np.fft.fftshift(fft)
         amp = np.abs(fft)
         signal = np.mean(amp[signal_index])
@@ -99,7 +139,7 @@ def compute_gray_weights(params, logger):
 
     scores = []
     for row in row_samples:
-        subI = sub_image(img, box_size, (center_col, row))
+        subI = sub_image(img, sub_img_shape, (center_col, row))
         subI = subI.image
         img_scores = []
         
@@ -119,7 +159,7 @@ def compute_gray_weights(params, logger):
     one_cnt = 0
     images = None
     for row in row_samples:
-        subI = sub_image(img, box_size, (center_col, row))
+        subI = sub_image(img, sub_img_shape , (center_col, row))
         subI = subI.image
         gray_img = compute_gray(False, best_method, subI, False, logger)
         if images is None:
@@ -128,13 +168,25 @@ def compute_gray_weights(params, logger):
             images = np.vstack((images, gray_img))
 
     _, binary_image = cv.threshold(images, 0, 1, cv.THRESH_OTSU)
-    zero_cnt = np.sum(binary_image == 0)
-    one_cnt = np.sum(binary_image == 1)
+    num_labels, labels, stats, centroids = cv.connectedComponentsWithStats(binary_image, connectivity = 8)
+    num_labels, labels_2, stats_inverted, centroids_inverted = cv.connectedComponentsWithStats(1 - binary_image, connectivity = 8)
+    
+    kmeans = KMeans(n_clusters = expected_signal_freq, n_init = 300)
+    non_inverted_x = centroids[1:, 0].reshape(-1, 1)
+    non_inverted = kmeans.fit(non_inverted_x)
+    non_inverted_labels = non_inverted.labels_
+    non_inverted_score = silhouette_score(non_inverted_x, non_inverted_labels)
 
-    if one_cnt > zero_cnt:
+    inverted_x = centroids_inverted[1:, 0].reshape(-1, 1)
+    inverted = kmeans.fit(inverted_x)
+    inverted_labels = inverted.labels_
+    inverted_score = silhouette_score(inverted_x, inverted_labels)
+    
+    if inverted_score > non_inverted_score:
         invert = True
     else:
         invert = False
+    
 
     return best_method, invert, best_score
 

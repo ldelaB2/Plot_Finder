@@ -26,11 +26,7 @@ class find_plots():
     def phase_one(self):
         # Phase one calcualte the optimal signal
         logger = self.loggers.fft_processing
-        try:
-            row_signal = self.params["calculated_row_signal"]
-            range_signal = self.params["calculated_range_signal"]
-        except:
-            row_signal, range_signal = compute_signal(self.params, logger)
+        row_signal, range_signal = compute_signal(self.params, logger)
 
         # Save the gray image
         save_results(self.params, [self.params["gray_img"]], ["starting_image"], "image", logger)

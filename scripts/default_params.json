@@ -10,12 +10,13 @@
     "custom_grayscale": false,
     "gray_scale_method": "AUTO",
     "gray_scale_invert": false,
-    "auto_gray_num_samples": 10,
-    "auto_theta_num_samples": 10,
-
+    
     "_comment": "Parameters for auto gray scale method",
     "auto_gray_methods": ["BI", "SCI", "GLI", "HI", "NGRDI", "SI", "VARI", "BGI","GRAY","LAB","HSV"],
-    "auto_gray_num_subimages": 5,
+    "auto_gray_num_samples": 10,
+
+    "_comment": "Parameters for auto theta",
+    "auto_theta_num_samples": 10,
     
     "_comment": "Processing parameters",
     "find_plots": true,
