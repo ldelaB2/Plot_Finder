@@ -10,6 +10,8 @@
     "custom_grayscale": false,
     "gray_scale_method": "AUTO",
     "gray_scale_invert": false,
+    "auto_gray_num_samples": 10,
+    "auto_theta_num_samples": 10,
 
     "_comment": "Parameters for auto gray scale method",
     "auto_gray_methods": ["BI", "SCI", "GLI", "HI", "NGRDI", "SI", "VARI", "BGI","GRAY","LAB","HSV"],
@@ -25,7 +27,7 @@
     "GSD": "AUTO",
     "rotation_angle": "AUTO",
     "num_cores": "AUTO",
-    "QC_depth": "min",
+    "save_QC": false,
 
     "_comment": "Labeling parameters",
     "label_start": "TL",
@@ -49,11 +51,13 @@
 
     "_comment": "Optimization parameters",
     "save_optimization_model": false,
+    "model_size": null,
+    "models": null,
     "x_radi": 0.25,
     "y_radi": 0.15,
     "t_radi": 5,
-    "shrink_width": 0.25,
-    "shrink_height": 0.25,
+    "width_radi": 0.25,
+    "height_radi": 0.25,
     "neighbor_radi": 2,
     "optimization_iteration": 5,
 

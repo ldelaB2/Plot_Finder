@@ -142,14 +142,14 @@ def find_correct_sized_obj(img):
     
     correct_indx = np.zeros_like(object_areas)
     for e in range(object_areas.size):
-        rel_object_size = round(object_areas[e] / mu)
+        rel_object_size = round(object_areas[e] / mu, 2)
         if rel_object_size > .9 and rel_object_size < 1.25:
             correct_indx[e] = 1
         else:
             correct_indx[e] = 0
+
     correct_indx = np.where(correct_indx == 1)[0] + 1
-    mask = np.isin(labeled_img, correct_indx)
-    filtered_img = np.where(mask, 1,0).astype(np.uint8)
+    filtered_img = np.where(np.isin(labeled_img, correct_indx), 1, 0).astype(np.uint8)
 
     return filtered_img, mu
 

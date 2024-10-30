@@ -5,7 +5,7 @@ matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
 
 from scipy.interpolate import LSQUnivariateSpline
-from functions.display import dialate_skel
+from functions.display import dialate_skel, save_results
 
 from functions.general import find_consecutive_in_range
 from functions.image_processing import find_correct_sized_obj
@@ -178,6 +178,9 @@ def process_range_wavepad(wavepad, params, logger):
 
     logger.info(f"FFT total time (s): {np.round(time.time() - start_time, 2)}")
 
+    # Save the results
+    save_results(params, [fft_wavepad], ["range_wavepad_fft"], "image", logger)
+
     # Trim the edges
     row_start = box_radi[0]
     row_end = wavepad.shape[0] - box_radi[0]
@@ -204,6 +207,9 @@ def process_range_wavepad(wavepad, params, logger):
     correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(size_filtered_wavepad)
     logger.info(f"Average Object Area: {np.round(avg_obj_area, 2)} for range wavepad")
 
+    # Save the results
+    save_results(params, [correct_sized_wavepad], ["range_wavepad_filtered"], "wavepad", logger)
+
     # Find the center lines
     poly_degree = params["poly_deg_range"]
     direction = "range"
@@ -217,6 +223,9 @@ def process_range_wavepad(wavepad, params, logger):
     # Report the total time
     logger.info(f"Total time for range wavepad processing (s): {np.round(time.time() - start_time, 2)}")
 
+    # Save the results
+    save_results(params, [center_line, imputed_skel], ["range_skel_original", "range_skel_imputed"], "skel", logger)
+                 
     return imputed_skel
 
 def process_row_wavepad(wavepad, params, logger):
@@ -277,6 +286,9 @@ def process_row_wavepad(wavepad, params, logger):
 
     logger.info(f"FFT total time (s): {np.round(time.time() - start_time, 2)}")
 
+    # Save the results
+    save_results(params, [fft_wavepad], ["row_wavepad_fft"], "image", logger)
+
     # Trim the edges
     row_start = box_radi[0]
     row_end = wavepad.shape[0] - box_radi[0]
@@ -303,6 +315,9 @@ def process_row_wavepad(wavepad, params, logger):
     correct_sized_wavepad, avg_obj_area = find_correct_sized_obj(size_filtered_wavepad)
     logger.info(f"Average Object Area: {np.round(avg_obj_area, 2)} for row wavepad")
 
+    # Save the results
+    save_results(params, [correct_sized_wavepad], ["row_wavepad_filtered"], "wavepad", logger)
+
     # Find the center lines
     poly_degree = params["poly_deg_row"]
     direction = "row"
@@ -314,6 +329,9 @@ def process_row_wavepad(wavepad, params, logger):
     imputed_skel = impute_skel(center_line, direction, logger)
 
     logger.info(f"Total time for row wavepad processing (s): {np.round(time.time() - start_time, 2)}")
+
+    # Save the results
+    save_results(params, [center_line, imputed_skel], ["row_skel_original", "row_skel_imputed"], "skel", logger)
 
     return imputed_skel
 
@@ -327,6 +345,10 @@ def wavepad_worker(signal):
 def center_line_worker(args):
     points, n_knots, poly_degree, direction, x = args
 
+    original_y = points[:, 1 - direction]
+    min_y = np.min(original_y)
+    max_y = np.max(original_y)
+
     unique_x, indices = np.unique(points[:, direction], return_inverse = True)
     y_sum = np.zeros_like(unique_x)
     np.add.at(y_sum, indices, points[:, (1 - direction)])
@@ -335,6 +357,8 @@ def center_line_worker(args):
     knots = np.linspace(unique_x[0], unique_x[-1], n_knots)[1:-1]
     spl = LSQUnivariateSpline(unique_x, mean_values, knots, k = poly_degree)
     y = spl(x).astype(int)
+
+    y = np.clip(y, min_y, max_y)
 
     return y
 

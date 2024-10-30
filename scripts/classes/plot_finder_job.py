@@ -26,7 +26,7 @@ class plot_finder_job:
 
             # End time
             end_time = time.time()
-            self.loggers.find_plots.info(f"Total time for finding plots: {np.round(end_time - find_plots_start_time)}")
+            self.loggers.find_plots.info(f"Total time for finding plots (s): {np.round(end_time - find_plots_start_time)}")
 
         if self.params.user_params["optimize_plots"] == True:
             optimizing_start_time = time.time()
@@ -36,7 +36,7 @@ class plot_finder_job:
 
             # End time
             end_time = time.time()
-            self.loggers.optimize_plots.info(f"Total time for optimizing plots: {np.round(end_time - optimizing_start_time)}")
+            self.loggers.optimize_plots.info(f"Total time for optimizing plots (s): {np.round(end_time - optimizing_start_time)}")
 
         self.print_plot_finder_logo()
 

@@ -12,7 +12,7 @@ from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
 from functions.wavepad import process_range_wavepad, process_row_wavepad
-from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles
+from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles, save_results
 from functions.rect_list import build_rect_list, set_range_row, set_id
 from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check, setup_rect_list
 
@@ -34,6 +34,9 @@ class find_plots():
             range_signal = self.params["calculated_range_signal"]
         except:
             row_signal, range_signal = compute_signal(self.params, logger)
+
+        # Save the gray image
+        save_results(self.params, [self.params["gray_img"]], ["starting_image"], "image", logger)
 
         # Box size
         box_radi = self.params["box_radi"]
@@ -117,6 +120,9 @@ class find_plots():
         end_time = time.time()
         logger.info(f"Finished processing fine grid in {np.round(end_time - start_time,2)} seconds")
 
+        # Save the output
+        save_results(self.params, [row_wavepad, range_wavepad], ["row_wavepad_raw", "range_wavepad_raw"], "image", logger)
+
         self.phase_three(row_wavepad, range_wavepad)
     
     def phase_three(self, row_wavepad, range_wavepad):
@@ -129,6 +135,9 @@ class find_plots():
         row_skel = process_row_wavepad(row_wavepad, self.params, logger)
 
         initial_rect_list, initial_range_cnt, initial_row_cnt, initial_width, initial_height = build_rect_list(range_skel, row_skel, img)
+
+        # Save the results
+        save_results(self.params, [initial_rect_list], ["plots_fft_initial"], "rect_list", logger)
 
         # Remote initial range and row
         logger.info(f"Initial Range Count: {initial_range_cnt}")
@@ -196,6 +205,9 @@ class find_plots():
 
         logger.info("Finished finding all ranges and rows")
 
+        # Save the results
+        save_results(self.params, [initial_rect_list], ["plots_fft_final"], "rect_list", logger)
+
         self.phase_five(initial_rect_list)
 
     def phase_five(self, initial_rect_list):
@@ -224,9 +236,6 @@ class find_plots():
         shp_path = os.path.join(shp_directory, f"{img_name}_fft.gpkg")
         logger.info(f"Creating the fft shapefile at {shp_path}")
         create_shapefile(final_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
-
-        # Update the params file
-        self.params["shapefile_path"] = shp_path
 
         logger.info("Finished Finding Plots")
 

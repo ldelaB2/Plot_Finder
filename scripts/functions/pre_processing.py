@@ -5,13 +5,10 @@ from matplotlib import pyplot as plt
 from pyproj import Transformer, CRS
 from functions.image_processing import build_path
 from classes.sub_image import sub_image
-from matplotlib import pyplot as plt
 from PIL import Image
 import multiprocessing as mp
 from functions.image_processing import compute_points, create_unit_square
-from sklearn.preprocessing import PolynomialFeatures
-from pyswarm import pso
-from scipy.optimize import dual_annealing
+
 
 def compute_GSD(meta_data, logger):
     # Get the current Coordinate Reference System
@@ -161,6 +158,7 @@ def compute_gray(custom, method, image, invert, logger):
         pixel_mat = np.where(np.isfinite(pixel_mat), pixel_mat, 0)
 
     else:
+        pixel_mat = np.zeros_like(img[:,:,0])
         if method == 'BI':
             pixel_mat = np.sqrt((img[:,:,0] ** 2 + img[:,:,1] ** 2 + img[:,:,2] ** 2)/3)
 
@@ -168,43 +166,43 @@ def compute_gray(custom, method, image, invert, logger):
             numerator = img[:,:,0] - img[:,:,1]
             denominator = img[:,:,0] + img[:,:,1]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
         
         elif method == 'GLI':
             numerator = 2 * img[:,:,1] - img[:,:,0] - img[:,:,2]
             denominator = 2 * img[:,:,0] + img[:,:,1] + img[:,:,2]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'HI':
             numerator = 2 * img[:,:,0] - img[:,:,1] - img[:,:,2]
             denominator = img[:,:,1] - img[:,:,2]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'NGRDI':
             numerator = img[:,:,1] - img[:,:,0]
             denominator = img[:,:,1] + img[:,:,0]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'SI':
             numerator = img[:,:,0] - img[:,:,2]
             denominator = img[:,:,0] + img[:,:,2]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'VARI':
             numerator = img[:,:,1] - img[:,:,0]
             denominator = img[:,:,1] + img[:,:,0] - img[:,:,2]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'BGI':
             numerator = img[:,:,2]
             denominator = img[:,:,1]
             valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0)
-            pixel_mat = np.where(valid, numerator / denominator, 0)
+            pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'GRAY':
             img = Image.fromarray(img)
@@ -236,6 +234,7 @@ def compute_theta(user_params, logger):
     # Read in the image
     img = user_params["img_ortho"]
     num_cores = user_params["num_cores"]
+    num_samples = user_params["auto_theta_num_samples"]
     
     # Compute the signal pixel
     gsd = user_params["GSD"]
@@ -243,7 +242,6 @@ def compute_theta(user_params, logger):
     signal_pixel = np.round(row_spacing_cm / gsd).astype(int)
 
     sub_img_radi = signal_pixel * 4
-    num_samples = 5
 
     if sub_img_radi > (img.shape[1] // 2):
         logger.warning(f"Row signal is too small. Using Full Image Width")
@@ -260,34 +258,61 @@ def compute_theta(user_params, logger):
     center_col = img.shape[1] // 2
     max_row = img.shape[0] - sub_img_radi - 1
     min_row = sub_img_radi + 1
-    row_samples = np.random.randint(min_row, max_row, num_samples)
+    row_samples = np.linspace(min_row, max_row, num_samples).astype(int)
 
     # Find the mask size
     test = np.zeros((sub_img_width))
     fft = np.fft.rfft(test)
-    mask = np.zeros_like(fft)
+    mask = np.zeros(fft.shape).astype(np.uint8)
     
     # Create the mask
     center = len(fft) // 2
-    min_signal = center + expected_signal_freq - 1
-    max_signal = center + expected_signal_freq + 1
-    mask[min_signal:max_signal] = 1
+    mask[center + expected_signal_freq] = 1
+    
+    # Dilate
+    kernel = np.ones((1,3), np.uint8)
+    mask = mask.reshape(1, -1)
+    mask = cv.dilate(mask, kernel, iterations = 1)
+
+    mask = mask.flatten()
 
     sub_img_shape = (sub_img_height, sub_img_width, img.shape[2])
 
     # Create the thetas
-    thetas = np.arange(-90, 90, 1)
+    thetas = np.arange(-90, 90, 5)
 
     # Find the number of cores needed
     needed_cores = min(num_cores, num_samples)
 
+    gray_methods = ["HSV", "LAB", "GRAY"]
+
+    # Coarse search
     with mp.Pool(needed_cores) as pool:
-        args = [(row, center_col, thetas, unit_sqr, img, mask, sub_img_shape) for row in row_samples]
+        args = [(row, center_col, thetas, unit_sqr, img, mask, sub_img_shape, gray_methods) for row in row_samples]
         results = pool.map(auto_theta_worker, args)
 
     results = np.array(results)
-    result = np.mean(results, axis = 0)
-    opt_theta = thetas[np.argmax(result)]
+    best_g_method = np.argmax(np.mean(results, axis = (0,1)))
+    opt_thetas = thetas[np.argmax(results[:,:,best_g_method], axis = 1)]
+
+    min_theta = np.min(opt_thetas)
+    max_theta = np.max(opt_thetas)
+
+    if min_theta == max_theta:
+        min_theta = min_theta - 2.5
+        max_theta = max_theta + 2.5
+
+    # Fine Search
+    thetas = np.arange(min_theta, max_theta, .25)
+    gray_methods = [gray_methods[best_g_method]]
+
+    with mp.Pool(needed_cores) as pool:
+        args = [(row, center_col, thetas, unit_sqr, img, mask, sub_img_shape, gray_methods) for row in row_samples]
+        results = pool.map(auto_theta_worker, args)
+
+    results = np.array(results)
+    best_g_method = np.argmax(np.mean(results, axis = (0,1)))
+    opt_theta = np.mean(thetas[np.argmax(results[:,:,best_g_method], axis = 1)])
 
     return opt_theta
 
@@ -448,29 +473,36 @@ def compute_signal(user_params, logger):
 
 
 def auto_theta_worker(args):
-    row, col, thetas, unit_sqr, img, mask, sub_img_shape = args
+    row, col, thetas, unit_sqr, img, mask, sub_img_shape, gray_methods = args
     scores = []
 
     for theta in thetas:
-        theta_rad = np.radians(theta)
+        theta_rad = np.deg2rad(theta)
         points = compute_points(col, row, theta_rad, sub_img_shape[1], sub_img_shape[0], unit_sqr, img.shape)
         sub_image = img[points[:, 1], points[:, 0], :]
         sub_image = np.reshape(sub_image, sub_img_shape)
 
-        gray_img = compute_gray(False, 'LAB', sub_image, True, None)
+        sub_score = []
 
-        signal = np.mean(gray_img, axis = 0)
-        signal = signal - np.mean(signal)
+        for method in gray_methods:
+            gray_img = compute_gray(False, method, sub_image, False, None)
 
-        fft = np.fft.rfft(signal)
-        fft = np.fft.fftshift(fft)
-        amp = np.abs(fft)
-        
-        signal = np.mean(amp[mask == 1])
-        noise = np.mean(amp[mask == 0])
+            signal = np.mean(gray_img, axis = 0)
+            signal = signal - np.mean(signal)
 
-        psnr = 10 * np.log10(signal**2 / noise**2)
-        scores.append(psnr)
+            fft = np.fft.rfft(signal)
+            fft = np.fft.fftshift(fft)
+            amp = np.abs(fft)
+            
+            signal = np.mean(amp[mask == 1])
+            noise = np.mean(amp[mask == 0])
+
+            psnr = 10 * np.log10(signal**2 / noise**2)
+            sub_score.append(psnr)
+
+        scores.append(sub_score)
+
+    scores = np.array(scores)
 
     return scores
 

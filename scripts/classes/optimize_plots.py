@@ -3,19 +3,36 @@ import cv2 as cv
 import geopandas as gpd
 from matplotlib import pyplot as plt
 import os
+import time
+import multiprocessing as mp
+from multiprocessing import shared_memory
 
 from functions.image_processing import four_2_five_rect
 from functions.rect_list import build_rect_list_points, set_id
-from functions.display import disp_rectangles
-import time
-from functions.optimization import optimize_xy, optimize_t, optimize_hw, compute_model
+from functions.display import save_model, save_results
+from functions.optimization import total_optimization, compute_model, set_radi
 from functions.rect_list_processing import distance_optimize
 from functions.general import create_shapefile
+from functions.optimization import compute_template_image
 
 class optimize_plots:
     def __init__(self, plot_finder_job_params, loggers):
         self.params = plot_finder_job_params
         self.logger = loggers.optimize_plots
+        self.phase_zero()
+
+    def phase_zero(self):
+        shape_path = os.path.join(self.params["output_directory"], "shapefile")
+        try: 
+            paths = os.listdir(shape_path)
+            for path in paths:
+                if path.endswith(".gpkg"):
+                    self.params["shapefile_path"] = os.path.join(shape_path, path)
+                    break
+        except:
+            self.logger.critical(f"No shapefiles found at: {shape_path}. Exiting...")
+            exit(1)
+        
         self.phase_one()
 
     def phase_one(self):
@@ -99,53 +116,72 @@ class optimize_plots:
     def phase_two(self, initial_rect_list):
         # Pull the params
         logger = self.logger
-        model_size = self.params["model_size"]
-        existing_models = self.params["models"]
-
-        if existing_models:
-            optimization_model = existing_models["initial_model"]
+        if self.params["model_size"] is None:
+            mean_width = np.mean([rect.width for rect in initial_rect_list])
+            mean_height = np.mean([rect.height for rect in initial_rect_list])
+            mean_width = np.round(mean_width).astype(int)
+            mean_height = np.round(mean_height).astype(int)
+            model_size = (mean_height, mean_width)
         else:
+            model_size = self.params["model_size"]
+
+        if self.params["models"] is None:
             optimization_model = compute_model(model_size, initial_rect_list, logger)
+        else:
+            optimization_model = self.params["models"]["initial_model"]
+        
+        # Save the initial model
+        save_model(self.params, optimization_model, "initial_model", logger)
+
+        optimized_rect_list = initial_rect_list
 
         # Get the optimization params
         x_radi = self.params["x_radi"]
         y_radi = self.params["y_radi"]
         t_radi = self.params["t_radi"]
-        shrink_width = self.params["shrink_width"]
-        shrink_height = self.params["shrink_height"]
+        w_radi = self.params["width_radi"]
+        h_radi = self.params["height_radi"]
+
+        optimized_rect_list = set_radi(optimized_rect_list, x_radi, y_radi, t_radi, h_radi, w_radi)
 
         iterations = self.params["optimization_iteration"]
         img = self.params["gray_img"]
         neighbor_radi = self.params["neighbor_radi"]
         kappa = 0.01
-
-        optimized_rect_list = initial_rect_list
+        num_cores = self.params["num_cores"]
 
         for cnt in range(iterations):
-            logger.info(f"Starting X,Y Optimization Iteration: {cnt + 1}")
+            logger.info(f"Starting Optimization Iteration: {cnt + 1}")
             start_time = time.time()
 
-            # Optimize XY
-            optimized_rect_list = optimize_xy(optimized_rect_list, x_radi, y_radi, img, optimization_model)
+            template_img = compute_template_image(optimization_model, img)
+            shm_template_img = shared_memory.SharedMemory(create = True, size = template_img.nbytes)
+            template_img_shared = np.ndarray(template_img.shape, dtype = template_img.dtype, buffer = shm_template_img.buf)
+            np.copyto(template_img_shared, template_img)
+
+            worker_lists = np.array_split(optimized_rect_list, num_cores)
+
+            with mp.Pool(processes = num_cores) as pool:
+                args = [(worker_list, optimization_model, shm_template_img.name, template_img.shape, template_img.dtype) for worker_list in worker_lists]
+                pool.map(total_optimization, args)
 
             # Neighbor Optimization
             optimized_rect_list = distance_optimize(optimized_rect_list, neighbor_radi, kappa, logger)
 
             # Update the model
             optimization_model = compute_model(model_size, optimized_rect_list, logger)
+
+            # Save the model
+            save_model(self.params, optimization_model, f"model_{cnt + 1}", logger)
+
+            # Save the results
+            save_results(self.params, [optimized_rect_list], [f"plots_optimized_xy_{cnt + 1}"], "rect_list", logger)
             
             end_time = time.time()
             e_time = np.round(end_time - start_time, 2)
             logger.info(f"Finished Optimization Iteration: {cnt + 1} in {e_time} seconds")
 
-        # Optimize Theta
-        logger.info("Starting Theta Optimization")
-        optimized_rect_list = optimize_t(optimized_rect_list, t_radi, optimization_model)
-
-        # Shrink the rectangles
-        logger.info("Starting Height and Width Optimization")
-        optimized_rect_list = optimize_hw(optimized_rect_list, shrink_height, shrink_width, optimization_model)
-        
+   
         logger.info("Finished Optimization")
         # Create the output
         self.phase_three(optimized_rect_list)

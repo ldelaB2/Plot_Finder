@@ -75,34 +75,28 @@ class pf_params:
                 logger.critical(f"Error creating directory: {path}. Error: {e}")
                 exit(1)
 
-        # Create the main output directory
-        create_dir(self.user_params["output_directory"], self.logger)
-
-        # Create the image output directory
-        img_directory = os.path.join(self.user_params["output_directory"], self.user_params["image_name"] + "_pf_output")
-        create_dir(img_directory, self.logger)
-
         # Create the output directory dictionary
         self.output_directories = {}
+        base_output = self.user_params["output_directory"]
 
         # Create the plots output directory
         if self.user_params["save_plots"] == True:
-            plots_directory = os.path.join(img_directory, "plots")
+            plots_directory = os.path.join(base_output, "plots")
             self.output_directories["plots"] = plots_directory
             create_dir(plots_directory, self.logger)
 
         # Create the quality output directory
-        if self.user_params["QC_depth"] != "none":
-            quality_directory = os.path.join(img_directory, "QC")
+        if self.user_params["save_QC"] == True:
+            quality_directory = os.path.join(base_output, "quality_control")
             self.output_directories["quality"] = quality_directory
             create_dir(quality_directory, self.logger)
         
-        shape_directory = os.path.join(img_directory, "shapefiles")
+        shape_directory = os.path.join(base_output, "shapefile")
         self.output_directories["shapefiles"] = shape_directory
         create_dir(shape_directory, self.logger)
 
         if self.user_params["optimize_plots"] == True and self.user_params["save_optimization_model"] == True:
-            optimize_models_directory = os.path.join(img_directory, "optimization_models")
+            optimize_models_directory = os.path.join(base_output, "optimization_models")
             self.output_directories["optimization_models"] = optimize_models_directory
             create_dir(optimize_models_directory, self.logger)
 

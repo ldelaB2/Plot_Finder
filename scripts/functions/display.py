@@ -1,9 +1,8 @@
 import numpy as np
 import cv2 as cv
 from PIL import Image
-import matplotlib
-
 from matplotlib import pyplot as plt
+import os
 
 from functions.general import bindvec
 
@@ -113,6 +112,56 @@ def disp_distance_change(expected_centers, geometric_mean, current_center):
     plt.scatter(current_center[0], current_center[1], c = 'b', label = 'Current Center')
     plt.legend()
     plt.show()
+
+def save_results(params, images, name, type, logger):
+    flag = params["save_QC"]
+
+    if not flag:
+        return
+    else:
+        output_directory = params["pf_output_directorys"]["quality"]
+
+        if len(images) != len(name):
+            logger.info("Number of images and names do not match")
+            return
+
+        if type == "image":
+            for e in range(len(images)):
+                output_path = os.path.join(output_directory, f"{name[e]}.jpg")
+                cv.imwrite(output_path, images[e])
+
+        elif type == "wavepad":
+            for e in range(len(images)):
+                output_path = os.path.join(output_directory, f"{name[e]}.jpg")
+                output = flatten_mask_overlay(params["img_ortho"], images[e])
+                output.save(output_path)
+
+        elif type == "skel":
+            for e in range(len(images)):
+                output_path = os.path.join(output_directory, f"{name[e]}.jpg")
+                output = flatten_mask_overlay(params["img_ortho"], dialate_skel(images[e]))
+                output.save(output_path)
+
+        elif type == "rect_list":
+            for e in range(len(images)):
+                output_path = os.path.join(output_directory, f"{name[e]}.jpg")
+                output = disp_rectangles(images[e])
+                output.save(output_path)
+
+        else:
+            logger.info("Invalid type for saving results")
+            return
+        
+def save_model(params, model, name, logger):
+    flag = params["save_optimization_model"]
+
+    if not flag:
+        return
+    else:
+        output_directory = params["pf_output_directorys"]["optimization_models"]
+        output_path = os.path.join(output_directory, f"{name}.jpg")
+        cv.imwrite(output_path, model)
+        
 
 
     
