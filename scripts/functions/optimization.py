@@ -2,9 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2 as cv
 
-from functions.display import disp_rectangles
 from functions.general import bindvec
-from multiprocessing import shared_memory
+
 
 def compute_model(model_size, rect_list, logger):
     logger.info(f"Computing Initial Model with {len(rect_list)} rectangles")
@@ -59,42 +58,22 @@ def compute_template_image(model, base_img):
 
     return results
 
-def optimize_rect_list_xy(rect_list):
+def compute_template_score(rect_list, template_img, x_radi, y_radi):
+    rect_list = set_radi(rect_list, x_radi, y_radi)
     scores = []
     for rect in rect_list:
-        rect.compute_template_score_image()
+        rect.optimize_xy(template_img)
         scores.append(rect.score)
-        rect.compute_template_position()
 
     score = np.median(scores)
 
     return score
 
-def set_radi(rect_list, x_radi, y_radi, t_radi, h_radi, w_radi):
+def set_radi(rect_list, x_radi, y_radi, t_radi = None, h_radi = None, w_radi = None):
     for rect in rect_list:
         rect.compute_radi(x_radi, y_radi, t_radi, h_radi, w_radi)
 
     return rect_list
-
-def total_optimization(args):
-    rect_list, model, template_img_name, template_img_shape, temp_dtype = args
-    temp_shared_mem = shared_memory.SharedMemory(name = template_img_name)
-    template_img = np.ndarray(template_img_shape, dtype = temp_dtype, buffer = temp_shared_mem.buf)
-
-    for rect in rect_list:
-        # XY Optimization
-        rect.optimize_xy(template_img)
-
-        # T Optimization
-        rect.optimize_t(model, method = "L2")
-
-        # H Optimization
-        rect.optimize_height_width(model, method = "L2")
-
-
-    temp_shared_mem.close()
-
-    return
 
 def compute_score(model, img, method):
     if img.shape != model.shape:

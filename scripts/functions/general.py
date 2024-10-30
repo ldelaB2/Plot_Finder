@@ -92,22 +92,6 @@ def find_consecutive_in_range(array, lower_bound, upper_bound, num_consecutive):
     print("No point found within window increasing bounds")
     return find_consecutive_in_range(array, lower_bound * .8, upper_bound* 1.2, num_consecutive)
 
-def save_plots(self):
-    def save_plots_fun(args):
-        img_name, plots_path, rect, img = args
-        name = f'{img_name}_{rect.range}_{rect.row}.jpg'
-        path = os.path.join(plots_path, name)
-        rect.save_rect(path, img)
-        return
-
-    with multiprocessing.Pool(processes=self.params["num_cores"]) as pool:
-        pool.map(
-            save_plots_fun,
-            [(self.name, self.plots_path, rect, self.rgb_ortho) for rect in self.final_rect_list]
-            )
-    print("Finished Saving Plots")
-    return
-        
 def create_shapefile(rect_list, original_transform, original_crs, inverse_rotation_matrix, file_name):
     poly_data = []
     for rect in rect_list:

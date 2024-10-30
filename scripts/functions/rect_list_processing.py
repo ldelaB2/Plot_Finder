@@ -1,23 +1,11 @@
 import numpy as np
 import copy
 
-from functions.optimization import optimize_rect_list_xy
+from functions.optimization import compute_template_score
 from functions.display import disp_rectangles
 from matplotlib import pyplot as plt
 from functions.general import geometric_median
 from functions.rect_list import compute_spiral_path
-
-
-def setup_rect_list(rect_list, dx, dy, template_img, model_shape):
-    for rect in rect_list:
-        rect.template_img = template_img
-        rect.x_radi = dx
-        rect.y_radi = dy
-        rect.model_shape = model_shape
-
-    _ = optimize_rect_list_xy(rect_list)
-
-    return 
 
 def find_next_rect(rect_list, direction, edge = False):
     if direction == 'row':
@@ -52,12 +40,14 @@ def find_next_rect(rect_list, direction, edge = False):
         if direction == 'range':
             tmp1_rect.center_y = tmp1_rect.center_y - delta
             tmp2_rect.center_y = tmp2_rect.center_y + delta
+        
             if not edge:
                 tmp1_rect.range = min_val - 1
                 tmp2_rect.range = max_val + 1
         elif direction == 'row':
             tmp1_rect.center_x = tmp1_rect.center_x - delta
             tmp2_rect.center_x = tmp2_rect.center_x + delta
+
             if not edge:
                 tmp1_rect.row = min_val - 1
                 tmp2_rect.row = max_val + 1
@@ -96,7 +86,7 @@ def check_within_img(min_list, max_list):
 
     return min_flag, max_flag
 
-def compare_next_to_current(rect_list, direction, logger):
+def compare_next_to_current(rect_list, direction, template_image, x_radi, y_radi, logger):
     # Find current edge
     current_min, current_max = find_next_rect(rect_list, direction, edge = True)
     # Find next set
@@ -106,13 +96,13 @@ def compare_next_to_current(rect_list, direction, logger):
     next_min_flag, next_max_flag = check_within_img(next_min, next_max)
 
     if next_min_flag:
-        next_min_score = optimize_rect_list_xy(next_min)
+        next_min_score = compute_template_score(next_min, template_image, x_radi, y_radi)
     else:
         next_min_score = np.inf
         logger.info(f"Next Min {direction} is out of bounds")
 
     if next_max_flag:
-        next_max_score = optimize_rect_list_xy(next_max)
+        next_max_score = compute_template_score(next_max, template_image, x_radi, y_radi)
     else:
         next_max_score = np.inf
         logger.info(f"Next Max {direction} is out of bounds")
@@ -166,7 +156,7 @@ def remove_rectangles(rect_list, direction, num_2_remove, logger):
 
     return rect_list
 
-def add_rectangles(rect_list, direction, num_2_add, logger):
+def add_rectangles(rect_list, direction, num_2_add, template_img, x_radi, y_radi, logger):
     for cnt in range(num_2_add):
         # Find the next rectangles
         min_list, max_list = find_next_rect(rect_list, direction, edge = False)
@@ -176,14 +166,14 @@ def add_rectangles(rect_list, direction, num_2_add, logger):
 
         if min_flag:
             # Optimize the rectangles
-            min_score = optimize_rect_list_xy(min_list)
+            min_score = compute_template_score(min_list, template_img, x_radi, y_radi)
                 
         else:
             min_score = np.inf
             logger.info("Min Rectangles are out of bounds")
 
         if max_flag:
-            max_score = optimize_rect_list_xy(max_list)
+            max_score = compute_template_score(max_list, template_img, x_radi, y_radi)
         else:
             max_score = np.inf
             logger.info("Max Rectangles are out of bounds")
@@ -203,13 +193,13 @@ def add_rectangles(rect_list, direction, num_2_add, logger):
 
     return rect_list
 
-def double_check(rect_list, direction, logger):
+def double_check(rect_list, direction, template_image, x_radi, y_radi, logger):
     # Checking to make sure we found the correct ranges and rows
     flag = True
     update_cnt = 0
 
     while flag:
-        update_flag, next_best_list, current_best_list = compare_next_to_current(rect_list, direction, logger)
+        update_flag, next_best_list, current_best_list = compare_next_to_current(rect_list, direction, template_image, x_radi, y_radi, logger)
         if update_flag:
             # Remove the current best list and add the next best list
             rect_list = remove_rectangles_from_list(rect_list, current_best_list)
@@ -258,7 +248,7 @@ def compute_neighbors(rect_list, neighbor_radi):
 
     return
 
-def distance_optimize(rect_list, neighbor_radi, kappa, logger):
+def distance_optimize(rect_list, neighbor_distance, neighbor_radi, kappa, logger):
     logger.info("Starting Distance Optimization")
 
     #Compute the spiral path
@@ -286,10 +276,11 @@ def distance_optimize(rect_list, neighbor_radi, kappa, logger):
             # Neighbor
             neighbor_rect = rect_dict[neighbor]
             # Where my neighbor thinks I should be
-            expected_centers.append(neighbor_rect.compute_neighbor_position(me))
-            
+            expected_centers.append(neighbor_rect.compute_neighbor_position(neighbor_distance, me))
+        
+        expected_center = np.array([sublist[0] for sublist in expected_centers])
         # Compute the geometric median
-        geometric_mean = np.round(geometric_median(expected_centers)).astype(int)
+        geometric_mean = np.round(geometric_median(expected_center)).astype(int)
 
         # Compute the distance from the geometric mean
         my_distance = np.linalg.norm(np.array([rect.center_x, rect.center_y]) - geometric_mean)
@@ -327,10 +318,13 @@ def distance_optimize(rect_list, neighbor_radi, kappa, logger):
             # Neighbor
             neighbor_rect = rect_dict[neighbor]
             # Where my neighbor thinks I should be
-            expected_centers.append(neighbor_rect.compute_neighbor_position(me))
-            
+            expected_centers.append(neighbor_rect.compute_neighbor_position(neighbor_distance, me))
+        
+        expected_center = np.array([sublist[0] for sublist in expected_centers])
+        expected_attributes = np.array([sublist[1] for sublist in expected_centers])
+
         # Compute the geometric median
-        geometric_mean = np.round(geometric_median(expected_centers)).astype(int)
+        geometric_mean = np.round(geometric_median(expected_center)).astype(int)
 
         # Compute the distance from the geometric mean
         delta_center = geometric_mean - np.array([rect.center_x, rect.center_y])
@@ -341,11 +335,22 @@ def distance_optimize(rect_list, neighbor_radi, kappa, logger):
         if weight > .99:
             rect.flagged = True
 
+        mean_attributes = np.mean(expected_attributes, axis = 0)
+        my_attributes = np.array([rect.theta, rect.width, rect.height])
+        delta_attributes = mean_attributes - my_attributes
+
+        weighted_attributes = delta_attributes * weight
         weighted_delta = np.round(delta_center * weight).astype(int)
 
         # Update the rect center
         rect.center_x += weighted_delta[0]
         rect.center_y += weighted_delta[1]
+        # Update the rect attributes
+        rect.theta += np.round(weighted_attributes[0], 3)
+        rect.width += np.round(weighted_attributes[1]).astype(int)
+        rect.height += np.round(weighted_attributes[2]).astype(int)
+        # Recompute the corner points
+        rect.recompute_unit_sqr = True
 
 
     logger.info("Finished Distance Optimization")

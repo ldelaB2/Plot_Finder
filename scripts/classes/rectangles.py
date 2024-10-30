@@ -1,18 +1,17 @@
 import numpy as np
 from matplotlib import pyplot as plt
-import cv2 as cv
 
 from functions.image_processing import extract_rectangle, five_2_four_rect
-from functions.general import bindvec
 from functions.image_processing import create_unit_square
 from functions.optimization import compute_score
+from PIL import Image
 
 class rectangle:
     def __init__(self, rect):
-        self.center_y = rect[0]
-        self.center_x = rect[1]
-        self.width = rect[2]
-        self.height = rect[3]
+        self.center_y = rect[0].astype(int)
+        self.center_x = rect[1].astype(int)
+        self.width = rect[2].astype(int)
+        self.height = rect[3].astype(int)
         self.theta = rect[4]
 
         if len(rect) == 7:
@@ -92,11 +91,14 @@ class rectangle:
         max_y = min(template_img.shape[0], max_y)
 
         final_negative_x = top_left[0] - min_x
-        final_positive_x = max_x - top_left[0]
         final_negative_y = top_left[1] - min_y
-        final_positive_y = max_y - top_left[1]
 
         sub_template_img = template_img[min_y:max_y, min_x:max_x]
+        
+        if sub_template_img.size == 0:
+            score = np.inf
+            self.flagged = True
+            return
         
         score = np.min(sub_template_img)
 
@@ -107,6 +109,7 @@ class rectangle:
 
         self.center_x += delta[1]
         self.center_y += delta[0]
+        self.score = score
 
         return
 
@@ -123,7 +126,7 @@ class rectangle:
 
         return
         
-    def compute_neighbor_position(self, neighbor):
+    def compute_neighbor_position(self, neighbor_distance, neighbor):
         rng_away = abs(self.range - neighbor[0])
         row_away = abs(self.row - neighbor[1])
 
@@ -132,8 +135,8 @@ class rectangle:
         if neighbor[1] < self.row:
             row_away *= -1
 
-        dx = self.width * row_away
-        dy = self.height * rng_away
+        dx = neighbor_distance[1] * row_away
+        dy = neighbor_distance[0] * rng_away
         
         theta = np.radians(self.theta)
 
@@ -146,7 +149,7 @@ class rectangle:
         estimated_x = self.center_x + dx_rot
         estimated_y = self.center_y + dy_rot
 
-        return estimated_x, estimated_y
+        return [estimated_x, estimated_y], [self.theta, self.width, self.height]
     
     def compute_radi(self, x_radi = None, y_radi = None, t_radi = None, h_radi = None, w_radi = None):
         if x_radi is not None:
@@ -164,8 +167,8 @@ class rectangle:
             self.max_y = top_left[1] + y_radi
 
         if t_radi is not None:
-            self.min_t = - t_radi
-            self.max_t = t_radi
+            self.min_t = self.theta - t_radi
+            self.max_t = self.theta + t_radi
 
         if h_radi is not None:
             h_radi = np.round(self.height * h_radi).astype(int)
@@ -180,38 +183,103 @@ class rectangle:
         return
     
     def optimize_t(self, model, method = "L2"):
-        thetas = np.arange(self.min_t - self.theta, self.max_t - self.theta + 1, 1)
+        current_score = compute_score(model, self.create_sub_image(), method)
+
+        # First pass
+        thetas = np.arange(self.min_t - self.theta, self.max_t - self.theta + 1, .1)
         scores = []
         for theta in thetas:
             new_img = self.move_rectangle(0, 0, theta)
             score = compute_score(model, new_img, method)
             scores.append(score)
 
-        best_theta = thetas[np.argmin(scores)]
-        self.theta += best_theta
+        best_score = np.min(scores)
 
-        return
+        if best_score < current_score:
+            best_theta = thetas[np.argmin(scores)]
+            self.theta += best_theta
+            self.recompute_unit_sqr = True
+            output = 1
+        else:
+            output = 0
+
+        return output
     
-    def optimize_height_width(self, model, method = "L2"):
-        heights = np.arange(self.min_height - self.height, self.max_height - self.height + 1, 5)
-        widths = np.arange(self.min_width - self.width, self.max_width - self.width + 1, 5)
-        H, W = np.meshgrid(heights, widths)
-        points = np.array([H.flatten(), W.flatten()]).T
+    def optimize_height(self, model, method = "L2"):
+        current_score = compute_score(model, self.create_sub_image(), method)
 
+        # First pass
+        heights = np.arange(self.min_height - self.height, self.max_height - self.height + 1, 20)
         scores = []
-        for point in points:
-            new_img = self.shrink_rectangle(point[1], point[0])
+
+        for height in heights:
+            new_img = self.shrink_rectangle(0, height)
             score = compute_score(model, new_img, method)
             scores.append(score)
 
-        best_point = points[np.argmin(scores)]
+        # Second pass
+        rough_best_height = heights[np.argmin(scores)]
+        heights = np.arange(rough_best_height - 10, rough_best_height + 10, 1)
+        scores = []
 
-        self.height += best_point[0]
-        self.width += best_point[1]
+        for height in heights:
+            new_img = self.shrink_rectangle(0, height)
+            score = compute_score(model, new_img, method)
+            scores.append(score)
 
-        self.recompute_unit_sqr = True
+        best_score = np.min(scores)
+
+        if best_score < current_score:
+            best_height = heights[np.argmin(scores)]
+            self.height += best_height
+            self.recompute_unit_sqr = True
+            output = 1
+        else:
+            output = 0
+        
+        return output
+
+    def optimize_width(self, model,  method = "L2"):
+        current_score = compute_score(model, self.create_sub_image(), method)
+
+        # First pass
+        widths = np.arange(self.min_width - self.width, self.max_width - self.width + 1, 10)
+        scores = []
+
+        for width in widths:
+            new_img = self.shrink_rectangle(width, 0)
+            score = compute_score(model, new_img, method)
+            scores.append(score)
+
+        # Second pass
+        rough_best_width = widths[np.argmin(scores)]
+        widths = np.arange(rough_best_width - 5, rough_best_width + 5, 1)
+        scores = []
+
+        for width in widths:
+            new_img = self.shrink_rectangle(width, 0)
+            score = compute_score(model, new_img, method)
+            scores.append(score)
+
+        best_score = np.min(scores)
+        if best_score < current_score:
+            best_width = widths[np.argmin(scores)]
+            self.width += best_width
+            self.recompute_unit_sqr = True
+            output = 1
+        else:
+            output = 0
+        
+        return output
+    
+    def save_rect(self, img, path):
+        unit_sqr = create_unit_square(self.width, self.height)
+        sub_image = extract_rectangle(self.center_x, self.center_y, self.theta, self.width, self.height, unit_sqr, img)
+        sub_image = Image.fromarray(sub_image)
+        sub_image.save(path)
 
         return
+
 
 
 

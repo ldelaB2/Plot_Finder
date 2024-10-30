@@ -7,16 +7,14 @@ import time
 
 from classes.sub_image import sub_image
 
-from functions.optimization import compute_model, compute_template_image
+from functions.optimization import compute_model, set_radi, compute_template_image
 from functions.image_processing import build_path
 from functions.general import create_shapefile
 from functions.pre_processing import compute_signal, compute_skip
 from functions.wavepad import process_range_wavepad, process_row_wavepad
 from functions.display import dialate_skel, flatten_mask_overlay, disp_rectangles, save_results
 from functions.rect_list import build_rect_list, set_range_row, set_id
-from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check, setup_rect_list
-
-
+from functions.rect_list_processing import add_rectangles, remove_rectangles, distance_optimize, double_check
 
 
 class find_plots():
@@ -167,15 +165,16 @@ class find_plots():
         fft_ranges = self.params["fft_range_cnt"]
         fft_rows = self.params["fft_row_cnt"]
         initial_model = self.params["models"]["initial_model"]
-        model_shape = self.params["model_size"]
-        x_radi = np.round(self.params["x_radi"] * model_shape[1]).astype(int)
-        y_radi = np.round(self.params["y_radi"] * model_shape[0]).astype(int)
-
+        x_radi = self.params["x_radi"]
+        y_radi = self.params["y_radi"]
+        
         # Create the template img 
         template_image = compute_template_image(initial_model, self.params["gray_img"])
         
-        # Setup the rect list
-        setup_rect_list(initial_rect_list, x_radi, y_radi, template_image, model_shape)
+        # XY Optimization the initial rectangles
+        initial_rect_list = set_radi(initial_rect_list, x_radi, y_radi)
+        for rect in initial_rect_list:
+            rect.optimize_xy(template_image)
 
         # Compute the number of ranges and rows to add or remove
         delta_ranges = num_ranges - fft_ranges
@@ -184,24 +183,24 @@ class find_plots():
         # Ranges
         if delta_ranges > 0:
             logger.info(f"Adding {delta_ranges} missing ranges")
-            initial_rect_list = add_rectangles(initial_rect_list, "range", delta_ranges, logger)
+            initial_rect_list = add_rectangles(initial_rect_list, "range", delta_ranges, template_image, x_radi, y_radi, logger)
         elif delta_ranges < 0:
             logger.info(f"Removing {abs(delta_ranges)} extra ranges")
             initial_rect_list = remove_rectangles(initial_rect_list, "range", abs(delta_ranges), logger)
         
         logger.info("Double checking ranges")
-        initial_rect_list = double_check(initial_rect_list, "range", logger)
+        initial_rect_list = double_check(initial_rect_list, "range",  template_image, x_radi, y_radi, logger)
 
         # Rows
         if delta_rows > 0:
             logger.info(f"Adding {delta_rows} missing rows")
-            initial_rect_list = add_rectangles(initial_rect_list, "row", delta_rows, logger)
+            initial_rect_list = add_rectangles(initial_rect_list, "row", delta_rows, template_image, x_radi, y_radi, logger)
         elif delta_rows < 0:
             logger.info(f"Removing {abs(delta_rows)} extra rows")
             initial_rect_list = remove_rectangles(initial_rect_list, "row", abs(delta_rows), logger)
         
         logger.info("Double checking rows")
-        initial_rect_list = double_check(initial_rect_list, "row", logger)
+        initial_rect_list = double_check(initial_rect_list, "row", template_image, x_radi, y_radi, logger)
 
         logger.info("Finished finding all ranges and rows")
 
@@ -222,6 +221,7 @@ class find_plots():
         original_transform = self.params["meta_data"]["transform"] 
         original_crs = self.params["meta_data"]["crs"]
         inverse_rotation = self.params["inverse_rotation_matrix"]
+        model_size = self.params["model_size"]
         kappa = .1
 
         # Setting the range and row
@@ -230,7 +230,7 @@ class find_plots():
         set_id(initial_rect_list, start = label_start, flow = label_flow)
 
         # Distance Optimize
-        final_rect_list = distance_optimize(initial_rect_list, neighbor_radi, kappa, logger)
+        final_rect_list = distance_optimize(initial_rect_list, model_size, neighbor_radi, kappa, logger)
 
         # Create the shapefile
         shp_path = os.path.join(shp_directory, f"{img_name}_fft.gpkg")

@@ -172,7 +172,7 @@ def four_2_five_rect(points):
     theta2 = np.arctan2(dy2, dx2)
     theta = (theta1 + theta2) / 2
     theta = np.degrees(theta)
-    theta = np.round(theta).astype(int)
+    theta = np.round(theta,2)
 
     center = np.mean((top_left,top_right,bottom_left,bottom_right), axis = 0).astype(int)
     rect = np.append(center, [width, height, theta])

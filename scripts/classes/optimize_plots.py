@@ -1,19 +1,17 @@
 import numpy as np
-import cv2 as cv
 import geopandas as gpd
 from matplotlib import pyplot as plt
 import os
 import time
-import multiprocessing as mp
-from multiprocessing import shared_memory
 
 from functions.image_processing import four_2_five_rect
 from functions.rect_list import build_rect_list_points, set_id
 from functions.display import save_model, save_results
-from functions.optimization import total_optimization, compute_model, set_radi
+from functions.optimization import compute_model, set_radi
 from functions.rect_list_processing import distance_optimize
 from functions.general import create_shapefile
 from functions.optimization import compute_template_image
+from tqdm import tqdm
 
 class optimize_plots:
     def __init__(self, plot_finder_job_params, loggers):
@@ -148,25 +146,27 @@ class optimize_plots:
         img = self.params["gray_img"]
         neighbor_radi = self.params["neighbor_radi"]
         kappa = 0.01
-        num_cores = self.params["num_cores"]
-
+        
         for cnt in range(iterations):
             logger.info(f"Starting Optimization Iteration: {cnt + 1}")
             start_time = time.time()
 
             template_img = compute_template_image(optimization_model, img)
-            shm_template_img = shared_memory.SharedMemory(create = True, size = template_img.nbytes)
-            template_img_shared = np.ndarray(template_img.shape, dtype = template_img.dtype, buffer = shm_template_img.buf)
-            np.copyto(template_img_shared, template_img)
 
-            worker_lists = np.array_split(optimized_rect_list, num_cores)
+            t_cnt = 0
+            h_cnt = 0
+            w_cnt = 0
+            # Total Optimization
+            for rect in tqdm(optimized_rect_list, desc = "Total Optimization"):
+                rect.optimize_xy(template_img)
+                t_cnt += rect.optimize_t(optimization_model, method = "L2")
+                h_cnt += rect.optimize_height(optimization_model, method = "L2")
+                w_cnt += rect.optimize_width(optimization_model, method = "L2")
 
-            with mp.Pool(processes = num_cores) as pool:
-                args = [(worker_list, optimization_model, shm_template_img.name, template_img.shape, template_img.dtype) for worker_list in worker_lists]
-                pool.map(total_optimization, args)
+            logger.info(f"Total Plots Updated: T: {t_cnt}, H: {h_cnt}, W: {w_cnt}")
 
             # Neighbor Optimization
-            optimized_rect_list = distance_optimize(optimized_rect_list, neighbor_radi, kappa, logger)
+            optimized_rect_list = distance_optimize(optimized_rect_list, model_size,  neighbor_radi, kappa, logger)
 
             # Update the model
             optimization_model = compute_model(model_size, optimized_rect_list, logger)
@@ -175,7 +175,7 @@ class optimize_plots:
             save_model(self.params, optimization_model, f"model_{cnt + 1}", logger)
 
             # Save the results
-            save_results(self.params, [optimized_rect_list], [f"plots_optimized_xy_{cnt + 1}"], "rect_list", logger)
+            save_results(self.params, [optimized_rect_list], [f"plots_optimized_{cnt + 1}"], "rect_list", logger)
             
             end_time = time.time()
             e_time = np.round(end_time - start_time, 2)
@@ -201,5 +201,27 @@ class optimize_plots:
         create_shapefile(optimize_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
 
         logger.info("Finished Optimizing Plots")
+
+        if self.params["save_plots"] == True:
+            logger.info("Saving Plots")
+            self.save_plots(optimize_rect_list)
+
+        return
+    
+    def save_plots(self, rect_list):
+        # Pull the params
+        logger = self.logger
+        output_dir = self.params["pf_output_directorys"]
+        plots_dir = output_dir["plots"]
+        img_ortho = self.params["img_ortho"]
+        img_name = self.params["image_name"]
+        
+        logger.info(f"Saving Plots at: {plots_dir}")
+
+        for rect in tqdm(rect_list, desc = "Saving Plots"):
+            rect_path = os.path.join(plots_dir, f"{img_name}_plot_{rect.ID}.jpg")
+            rect.save_rect(img_ortho, rect_path)
+
+        logger.info("Finished Saving Plots")
         return
 
