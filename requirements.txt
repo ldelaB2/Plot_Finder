@@ -21,6 +21,7 @@ pillow==11.0.0
 pyogrio==0.10.0
 pyparsing==3.2.0
 pyproj==3.6.1
+pyswarm==0.6
 python-dateutil==2.9.0.post0
 pytz==2024.2
 rasterio==1.4.1
@@ -29,5 +30,6 @@ scipy==1.13.1
 shapely==2.0.6
 six==1.16.0
 threadpoolctl==3.5.0
+tqdm==4.66.6
 tzdata==2024.2
 zipp==3.20.2
