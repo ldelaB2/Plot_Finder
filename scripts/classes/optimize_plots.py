@@ -94,7 +94,9 @@ class optimize_plots:
             rect = four_2_five_rect([top_left, top_right, bottom_left, bottom_right])
             rect_coords.append(rect)
 
-    
+        # Save the starting image
+        save_results(self.params, [self.params["gray_img"]], ["starting_image"], "image", self.logger)
+
         # Get the required params to build the rectangles
         num_rows = self.params["number_rows"]
         num_ranges = self.params["number_ranges"]

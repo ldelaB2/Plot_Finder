@@ -51,7 +51,7 @@ else
 fi
 
 # Check that the image exists
-image_file=$(find "$data_set_path" -type f \( -iname "*.tif" -o -iname "*.tiff" \))
+image_file=$(find "$data_set_path" -type f \( -iname "*.tif" -o -iname "*.tiff" \) -not -name ".*")
 
 if [[ -f "$image_file" ]]; then
     echo "Image File Found at: $image_file"
