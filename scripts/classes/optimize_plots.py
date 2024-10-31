@@ -145,6 +145,13 @@ class optimize_plots:
         img = self.params["gray_img"]
         neighbor_radi = self.params["neighbor_radi"]
         kappa = 0.01
+
+        output_dir = self.params["pf_output_directorys"]
+        shp_directory = output_dir["shapefiles"]
+        img_name = self.params["image_name"]
+        original_transform = self.params["meta_data"]["transform"] 
+        original_crs = self.params["meta_data"]["crs"]
+        inverse_rotation = self.params["inverse_rotation_matrix"]
         
         for cnt in range(iterations):
             logger.info(f"Starting Optimization Iteration: {cnt + 1}")
@@ -176,34 +183,21 @@ class optimize_plots:
             # Save the results
             save_results(self.params, [optimized_rect_list], [f"plots_optimized_{cnt + 1}"], "rect_list", logger)
             
+            shp_path = os.path.join(shp_directory, f"{img_name}_optimized_plots_{cnt + 1}.gpkg")
+            logger.info(f"Creating Optimized Shapefile at: {shp_path}")
+            create_shapefile(optimized_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
+
+
             end_time = time.time()
             e_time = np.round(end_time - start_time, 2)
             logger.info(f"Finished Optimization Iteration: {cnt + 1} in {e_time} seconds")
 
    
         logger.info("Finished Optimization")
-        # Create the output
-        self.phase_three(optimized_rect_list)
-
-    def phase_three(self, optimize_rect_list):
-        logger = self.logger
-        # Pull the params
-        output_dir = self.params["pf_output_directorys"]
-        shp_directory = output_dir["shapefiles"]
-        img_name = self.params["image_name"]
-        original_transform = self.params["meta_data"]["transform"] 
-        original_crs = self.params["meta_data"]["crs"]
-        inverse_rotation = self.params["inverse_rotation_matrix"]
-
-        shp_path = os.path.join(shp_directory, f"{img_name}_optimized_plots.gpkg")
-        logger.info(f"Creating Optimized Shapefile at: {shp_path}")
-        create_shapefile(optimize_rect_list, original_transform, original_crs, inverse_rotation, shp_path)
-
-        logger.info("Finished Optimizing Plots")
-
+        
         if self.params["save_plots"] == True:
             logger.info("Saving Plots")
-            self.save_plots(optimize_rect_list)
+            self.save_plots(optimized_rect_list)
 
         return
     
