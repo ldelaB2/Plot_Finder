@@ -36,6 +36,8 @@ def compute_model(model_size, rect_list, logger):
 
     # Calculate orientation angle (rotation)
     angle = 0.5 * np.arctan2(2 * moments['mu11'], moments['mu20'] - moments['mu02']) * (180 / np.pi)
+    if angle < 0:
+        angle += 180
     rotation = np.round(angle - 90, 3)
 
     logger.info(f"Model Rotation: {rotation} degrees")
@@ -50,6 +52,23 @@ def compute_model(model_size, rect_list, logger):
     translated_model = cv.warpAffine(initial_model, rotation_matrix, (model_size[1], model_size[0]))
 
     return translated_model
+
+def compute_model_final(model_size, rect_list, logger):
+    logger.info(f"Computing Final Model with {len(rect_list)} rectangles")
+
+    final_model = np.zeros(model_size)
+    for rect in rect_list:
+        sub_img = rect.create_sub_image()
+        if sub_img.shape != model_size:
+            sub_img = cv.resize(sub_img, model_size[::-1])
+
+        final_model += sub_img
+
+    final_model = final_model / len(rect_list)
+    final_model = np.round(255 * bindvec(final_model)).astype(np.uint8)
+
+    return final_model
+
 
 def compute_template_image(model, base_img):
     results = cv.matchTemplate(base_img, model, cv.TM_CCOEFF_NORMED)

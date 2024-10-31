@@ -216,7 +216,6 @@ class find_plots():
         original_transform = self.params["meta_data"]["transform"] 
         original_crs = self.params["meta_data"]["crs"]
         inverse_rotation = self.params["inverse_rotation_matrix"]
-        model_size = self.params["model_size"]
         kappa = .1
 
         # Setting the range and row
@@ -225,7 +224,7 @@ class find_plots():
         set_id(initial_rect_list, start = label_start, flow = label_flow)
 
         # Distance Optimize
-        final_rect_list = distance_optimize(initial_rect_list, model_size, neighbor_radi, kappa, logger)
+        final_rect_list = distance_optimize(initial_rect_list, neighbor_radi, kappa, logger)
 
         # Create the shapefile
         shp_path = os.path.join(shp_directory, f"{img_name}_fft.gpkg")

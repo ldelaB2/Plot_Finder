@@ -182,7 +182,7 @@ class rectangle:
 
         return
     
-    def optimize_t(self, model, method = "L2"):
+    def optimize_t(self, model, method = "CCOEFF"):
         current_score = compute_score(model, self.create_sub_image(), method)
 
         # First pass
@@ -205,11 +205,12 @@ class rectangle:
 
         return output
     
-    def optimize_height(self, model, method = "L2"):
+    def optimize_height(self, model, method = "CCOEFF"):
         current_score = compute_score(model, self.create_sub_image(), method)
-
+        min_height = self.min_height - self.height
+        max_height = self.max_height - self.height
         # First pass
-        heights = np.arange(self.min_height - self.height, self.max_height - self.height + 1, 20)
+        heights = np.arange(min_height, max_height + 1, 20)
         scores = []
 
         for height in heights:
@@ -219,7 +220,10 @@ class rectangle:
 
         # Second pass
         rough_best_height = heights[np.argmin(scores)]
-        heights = np.arange(rough_best_height - 10, rough_best_height + 10, 1)
+        fine_min = max(rough_best_height - 10, min_height)
+        fine_max = min(rough_best_height + 10, max_height)
+
+        heights = np.arange(fine_min, fine_max + 1, 1)
         scores = []
 
         for height in heights:
@@ -239,11 +243,13 @@ class rectangle:
         
         return output
 
-    def optimize_width(self, model,  method = "L2"):
+    def optimize_width(self, model,  method = "CCOEFF"):
         current_score = compute_score(model, self.create_sub_image(), method)
 
+        min_width = self.min_width - self.width
+        max_width = self.max_width - self.width
         # First pass
-        widths = np.arange(self.min_width - self.width, self.max_width - self.width + 1, 10)
+        widths = np.arange(min_width, max_width + 1, 10)
         scores = []
 
         for width in widths:
@@ -253,7 +259,10 @@ class rectangle:
 
         # Second pass
         rough_best_width = widths[np.argmin(scores)]
-        widths = np.arange(rough_best_width - 5, rough_best_width + 5, 1)
+        fine_min = max(rough_best_width - 5, min_width)
+        fine_max = min(rough_best_width + 5, max_width)
+
+        widths = np.arange(fine_min, fine_max + 1, 1)
         scores = []
 
         for width in widths:

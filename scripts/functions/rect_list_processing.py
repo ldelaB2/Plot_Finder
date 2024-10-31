@@ -248,14 +248,42 @@ def compute_neighbors(rect_list, neighbor_radi):
 
     return
 
-def distance_optimize(rect_list, neighbor_distance, neighbor_radi, kappa, logger):
+def distance_optimize(rect_list, neighbor_radi, kappa, logger):
     logger.info("Starting Distance Optimization")
+
+    # Compute the average neighbor distance
+    avg_height = []
+    avg_width = []
+    n = len(rect_list)
+    for i in range(n):
+        for j in range(i + 1, n):
+            rect1 = rect_list[i]
+            rect2 = rect_list[j]
+
+            rng_away = abs(rect1.range - rect2.range)
+            row_away = abs(rect1.row - rect2.row)
+
+            if rng_away != 0:
+                y_away = abs(rect1.center_y - rect2.center_y)
+                tmp_height = y_away / rng_away
+                avg_height.append(tmp_height)
+            
+            if row_away != 0:
+                x_away = abs(rect1.center_x - rect2.center_x)
+                tmp_width = x_away / row_away
+                avg_width.append(tmp_width)
+
+    avg_height = np.round(np.mean(avg_height)).astype(int)
+    avg_width = np.round(np.mean(avg_width)).astype(int)
+
+    neighbor_distance = [avg_height, avg_width]
 
     #Compute the spiral path
     spiral_path = compute_spiral_path(rect_list)
     logger.info(f"Start Point: {spiral_path[0]}")
     # Compute the neighbors
     compute_neighbors(rect_list, neighbor_radi)
+
 
     # Set up for the first pass
     first_pass = [copy.copy(rect) for rect in rect_list]
@@ -332,8 +360,6 @@ def distance_optimize(rect_list, neighbor_distance, neighbor_radi, kappa, logger
         # Compute the weight
         my_distance = np.linalg.norm(delta_center)
         weight = sigmoid(my_distance)
-        if weight > .99:
-            rect.flagged = True
 
         mean_attributes = np.mean(expected_attributes, axis = 0)
         my_attributes = np.array([rect.theta, rect.width, rect.height])

@@ -7,8 +7,6 @@ from classes.sub_image import sub_image
 from PIL import Image
 import multiprocessing as mp
 from functions.image_processing import compute_points, create_unit_square
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 
 
 def compute_GSD(meta_data, logger):
@@ -168,21 +166,23 @@ def compute_gray_weights(params, logger):
             images = np.vstack((images, gray_img))
 
     _, binary_image = cv.threshold(images, 0, 1, cv.THRESH_OTSU)
-    num_labels, labels, stats, centroids = cv.connectedComponentsWithStats(binary_image, connectivity = 8)
-    num_labels, labels_2, stats_inverted, centroids_inverted = cv.connectedComponentsWithStats(1 - binary_image, connectivity = 8)
-    
-    kmeans = KMeans(n_clusters = expected_signal_freq, n_init = 300)
-    non_inverted_x = centroids[1:, 0].reshape(-1, 1)
-    non_inverted = kmeans.fit(non_inverted_x)
-    non_inverted_labels = non_inverted.labels_
-    non_inverted_score = silhouette_score(non_inverted_x, non_inverted_labels)
 
-    inverted_x = centroids_inverted[1:, 0].reshape(-1, 1)
-    inverted = kmeans.fit(inverted_x)
-    inverted_labels = inverted.labels_
-    inverted_score = silhouette_score(inverted_x, inverted_labels)
+    vert_mean = np.mean(binary_image, axis = 1)
+    fft = np.fft.rfft(vert_mean - np.mean(vert_mean))
+    fft = np.fft.fftshift(fft)
+    amp = np.abs(fft)
+    sig = np.argmax(amp)
+    fft[:sig] = 0
+    fft[sig + 1:] = 0
+    signal = np.fft.irfft(np.fft.ifftshift(fft))
+
+    high_freq = np.where(signal >= .9 * np.max(signal))[0]
     
-    if inverted_score > non_inverted_score:
+    high_value = np.mean(vert_mean[high_freq])
+    high_count = np.sum(vert_mean >= high_value)
+    low_count = np.sum(vert_mean < high_value)
+
+    if low_count > high_count:
         invert = True
     else:
         invert = False

@@ -6,7 +6,7 @@ import time
 from functions.image_processing import four_2_five_rect
 from functions.rect_list import build_rect_list_points, set_id
 from functions.display import save_model, save_results
-from functions.optimization import compute_model, set_radi
+from functions.optimization import compute_model, set_radi, compute_model_final
 from functions.rect_list_processing import distance_optimize
 from functions.general import create_shapefile
 from functions.optimization import compute_template_image
@@ -128,7 +128,7 @@ class optimize_plots:
             optimization_model = self.params["models"]["initial_model"]
         
         # Save the initial model
-        save_model(self.params, optimization_model, "initial_model", logger)
+        save_model(self.params, optimization_model, "model_1", logger)
 
         optimized_rect_list = initial_rect_list
 
@@ -165,13 +165,13 @@ class optimize_plots:
             logger.info(f"Total Plots Updated: T: {t_cnt}, H: {h_cnt}, W: {w_cnt}")
 
             # Neighbor Optimization
-            optimized_rect_list = distance_optimize(optimized_rect_list, model_size,  neighbor_radi, kappa, logger)
-
+            optimized_rect_list = distance_optimize(optimized_rect_list, neighbor_radi, kappa, logger)
+            
             # Update the model
             optimization_model = compute_model(model_size, optimized_rect_list, logger)
 
             # Save the model
-            save_model(self.params, optimization_model, f"model_{cnt + 1}", logger)
+            save_model(self.params, optimization_model, f"model_{cnt + 2}", logger)
 
             # Save the results
             save_results(self.params, [optimized_rect_list], [f"plots_optimized_{cnt + 1}"], "rect_list", logger)
