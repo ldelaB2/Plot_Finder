@@ -2,15 +2,7 @@ import logging
 
 class pf_logger:
     def __init__(self, log_path):
-        self.clear_log(log_path)
         self.create_loggers(log_path)
-
-    def clear_log(self, log_path):
-        try:
-            with open(log_path, 'w') as f:
-                f.write("")
-        except:
-            pass
 
     def create_loggers(self, log_path):
         self.pre_processing = logging.getLogger("pre_processing")
