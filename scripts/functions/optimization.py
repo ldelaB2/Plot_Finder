@@ -83,7 +83,7 @@ def compute_template_score(rect_list, template_img, x_radi, y_radi):
         rect.optimize_xy(template_img)
         scores.append(rect.score)
 
-    score = np.median(scores)
+    score = np.mean(scores)
 
     return score
 

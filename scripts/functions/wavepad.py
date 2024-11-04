@@ -176,6 +176,10 @@ def process_range_wavepad(wavepad, params, logger):
     # Save the results
     save_results(params, [fft_wavepad], ["range_wavepad_fft"], "image", logger)
 
+    if fft_wavepad.shape != params["img_ortho_shape"][:2]:
+        fft_wavepad = cv.resize(fft_wavepad, (params["img_ortho_shape"][1], params["img_ortho_shape"][0]))
+        logger.info("Resizing Range Wavepad")
+
     # Trim the edges
     row_start = box_radi[0]
     row_end = wavepad.shape[0] - box_radi[0]
@@ -283,6 +287,10 @@ def process_row_wavepad(wavepad, params, logger):
 
     # Save the results
     save_results(params, [fft_wavepad], ["row_wavepad_fft"], "image", logger)
+
+    if fft_wavepad.shape != params["img_ortho_shape"][:2]:
+        fft_wavepad = cv.resize(fft_wavepad, (params["img_ortho_shape"][1], params["img_ortho_shape"][0]))
+        logger.info("Resizing Range Wavepad")
 
     # Trim the edges
     row_start = box_radi[0]

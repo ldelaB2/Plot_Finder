@@ -71,22 +71,70 @@ def remove_rectangles_from_list(total_list, remove_list):
     return output
 
 def check_within_img(min_list, max_list):
+    def compute_area_outside_image(rect, img_shape):
+        corner_points = rect.compute_corner_points()
+
+        # Compute the avearge location of the corners
+        left_x = np.round(np.mean(corner_points[(0,3), 0])).astype(int)
+        right_x = np.round(np.mean(corner_points[(1,2), 0])).astype(int)
+        top_y = np.round(np.mean(corner_points[(2,3), 1])).astype(int)
+        bottom_y = np.round(np.mean(corner_points[(0,1), 1])).astype(int)
+
+        # Check the top y 
+        if top_y < 0:
+            top_y_outside = abs(top_y)
+        else:
+            top_y_outside = 0
+
+        # Check the bottom y
+        if bottom_y > img_shape[0]:
+            bottom_y_outside = bottom_y - img_shape[0]
+        else:
+            bottom_y_outside = 0
+        
+        # Check the left x
+        if left_x < 0:
+            left_x_outside = abs(left_x)
+        else:
+            left_x_outside = 0
+
+        # Check the right x
+        if right_x > img_shape[1]:
+            right_x_outside = right_x - img_shape[1]
+        else:
+            right_x_outside = 0
+
+        total_area = rect.width * rect.height
+        area_outside = (top_y_outside + bottom_y_outside) * rect.width + (left_x_outside + right_x_outside) * rect.height
+
+        ratio = np.round(area_outside / total_area, 3)
+
+        return ratio
+
     img_shape = min_list[0].img.shape
-    min_center_x = np.mean([rect.center_x for rect in min_list])
-    max_center_x = np.mean([rect.center_x for rect in max_list])
-    min_center_y = np.mean([rect.center_y for rect in min_list])
-    max_center_y = np.mean([rect.center_y for rect in max_list])
+    min_ratio = []
+    for rect in min_list:
+        min_ratio.append(compute_area_outside_image(rect, img_shape))
 
-    min_flag, max_flag = True, True
-
-    if min_center_x < 0 or min_center_y < 0:
+    max_ratio = []
+    for rect in max_list:
+        max_ratio.append(compute_area_outside_image(rect, img_shape))
+        
+    threshold = .2
+    if np.mean(min_ratio) > threshold:
         min_flag = False
-    if max_center_x > img_shape[1] or max_center_y > img_shape[0]:
+    else:
+        min_flag = True
+    
+    if np.mean(max_ratio) > threshold:
         max_flag = False
+    else:
+        max_flag = True
+
 
     return min_flag, max_flag
 
-def compare_next_to_current(rect_list, direction, template_image, x_radi, y_radi, logger):
+def compare_next_to_current(rect_list, direction, template_image, x_radi, y_radi, logger):#
     # Find current edge
     current_min, current_max = find_next_rect(rect_list, direction, edge = True)
     # Find next set
@@ -107,30 +155,37 @@ def compare_next_to_current(rect_list, direction, template_image, x_radi, y_radi
         next_max_score = np.inf
         logger.info(f"Next Max {direction} is out of bounds")
 
-    # Compute the current scores
-    current_min_score = np.mean([rect.score for rect in current_min])
-    current_max_score = np.mean([rect.score for rect in current_max])
-
-    if current_min_score < current_max_score:
-        # Compare the next min to current max
-        if next_min_score < current_max_score:
-            drop_list = current_max
-            add_list = next_min
-            update_flag = True
-        else:
-            update_flag = False
-
-    elif current_max_score < current_min_score:
-        # Compare next max to current min
-        if next_max_score < current_min_score:
-            drop_list = current_min
-            add_list = next_max
-            update_flag = True
-        else:
-            update_flag = False
-          
-    else:
+    # If both are outof bounds return 
+    if next_min_score == np.inf and next_max_score == np.inf:
+        logger.info(f"Both next {direction} are out of bounds stopping")
         update_flag = False
+        
+    else:
+
+        # Compute the current scores
+        current_min_score = np.mean([rect.score for rect in current_min])
+        current_max_score = np.mean([rect.score for rect in current_max])
+
+        if current_min_score < current_max_score:
+            # Compare the next min to current max
+            if next_min_score < current_max_score:
+                drop_list = current_max
+                add_list = next_min
+                update_flag = True
+            else:
+                update_flag = False
+
+        elif current_max_score < current_min_score:
+            # Compare next max to current min
+            if next_max_score < current_min_score:
+                drop_list = current_min
+                add_list = next_max
+                update_flag = True
+            else:
+                update_flag = False
+            
+        else:
+            update_flag = False
 
     if not update_flag:
         add_list = []
@@ -177,6 +232,10 @@ def add_rectangles(rect_list, direction, num_2_add, template_img, x_radi, y_radi
         else:
             max_score = np.inf
             logger.info("Max Rectangles are out of bounds")
+
+        if min_score == np.inf and max_score == np.inf:
+            logger.info(f"Both {direction} are out of bounds stopping")
+            logger.info(f"Added {cnt} {direction}(s) missing {num_2_add - cnt}")
 
 
         # Adding the rectangles with min score
