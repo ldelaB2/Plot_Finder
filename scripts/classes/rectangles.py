@@ -185,8 +185,11 @@ class rectangle:
     def optimize_t(self, model, method = "CCOEFF"):
         current_score = compute_score(model, self.create_sub_image(), method)
 
+        if self.min_t == self.max_t:
+            return 0
+        
         # First pass
-        thetas = np.arange(self.min_t - self.theta, self.max_t - self.theta + 1, .1)
+        thetas = np.arange(self.min_t - self.theta, self.max_t - self.theta + .1, .1)
         scores = []
         for theta in thetas:
             new_img = self.move_rectangle(0, 0, theta)
