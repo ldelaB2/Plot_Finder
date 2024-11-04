@@ -256,15 +256,15 @@ def compute_gray(custom, method, image, invert, logger):
             pixel_mat[valid] = numerator[valid] / denominator[valid]
 
         elif method == 'GRAY':
-            img = Image.fromarray(img)
+            img = Image.fromarray(img.astype(np.uint8))
             pixel_mat = np.array(img.convert('L'))
 
         elif method == 'LAB':
-            img = Image.fromarray(img)
+            img = Image.fromarray(img.astype(np.uint8))
             pixel_mat = np.array(img.convert('LAB'))[:,:,1]
 
         elif method == 'HSV':
-            img = Image.fromarray(img)
+            img = Image.fromarray(img.astype(np.uint8))
             pixel_mat = np.array(img.convert('HSV'))[:,:,0]
 
         else:
