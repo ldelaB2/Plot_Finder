@@ -192,7 +192,7 @@ def compute_gray_weights(params, logger):
 
 def compute_gray(custom, method, image, invert, logger):
     # convert the img to float32 and read in the grayscale method
-    img = np.copy(image).astype(np.uint8)
+    img = np.copy(image).astype(np.float32)
 
     if custom:
         # Check if the custom method is specified
