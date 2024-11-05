@@ -259,6 +259,10 @@ class rectangle:
 
         min_width = self.min_width - self.width
         max_width = self.max_width - self.width
+
+        if min_width == max_width:
+            return 0
+        
         # First pass
         widths = np.arange(min_width, max_width + 1, 10)
         scores = []
