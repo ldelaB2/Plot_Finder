@@ -212,6 +212,14 @@ class rectangle:
         current_score = compute_score(model, self.create_sub_image(), method)
         min_height = self.min_height - self.height
         max_height = self.max_height - self.height
+
+        if min_height == max_height:
+            return 0
+
+        # Check if min and max are the same
+        if min_height == max_height:
+            return 0
+        
         # First pass
         heights = np.arange(min_height, max_height + 1, 20)
         scores = []
